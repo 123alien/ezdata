@@ -1,0 +1,181 @@
+replicaCount: 1
+namespace: ezdata-helm
+image:
+  repository: ezdata123/ezdata
+  tag: latest
+  pullPolicy: IfNotPresent
+  web: ezdata123/ezdata-web
+
+web:
+  replicas: "1"
+  env:
+   web_api: 10.233.31.1:8001
+   scheduler_api: 10.233.31.2:8002
+   VITE_GLOB_API_URL: "http://127.0.0.1/api"
+   VITE_GLOB_DOMAIN_URL: "http://127.0.0.1"
+  service:
+    type: NodePort
+    clusterIP: 10.233.31.0
+    nodePort: 80
+
+api:
+  replicas: "1"
+  env:
+    read_env: "1"
+    ENV: prod.env
+    run_upgrade: "1"
+    upgrade_packages: "akshare,ccxt"
+    run_web: "1"
+    web_worker: "4"
+    run_scheduler: "0"
+    run_flower: "0"
+    run_worker: "0"
+    worker_concurrency: "4"
+    worker_queue: default
+    worker_process: prefork
+  service:
+    type: ClusterIP
+    clusterIP: 10.233.31.1
+
+scheduler:
+  replicas: "1"
+  env:
+    read_env: "1"
+    ENV: prod.env
+    run_upgrade: "1"
+    upgrade_packages: "akshare,ccxt"
+    run_web: "0"
+    web_worker: "4"
+    run_scheduler: "1"
+    run_flower: "1"
+    run_worker: "0"
+    worker_concurrency: "4"
+    worker_queue: default
+    worker_process: prefork
+  service:
+    type: ClusterIP
+    clusterIP: 10.233.31.2
+
+worker:
+  replicas: "1"
+  env:
+    read_env: "1"
+    ENV: prod.env
+    run_upgrade: "1"
+    upgrade_packages: "akshare,ccxt"
+    run_web: "0"
+    web_worker: "4"
+    run_scheduler: "0"
+    run_flower: "0"
+    run_worker: "1"
+    worker_concurrency: "4"
+    worker_queue: default
+    worker_process: prefork
+
+
+mysql:
+  enabled: true
+  auth:
+    username: "root"
+    password: "ezdata123"
+    rootPassword: "ezdata123"
+    database: "ezdata"
+  primary:
+    service:
+      clusterIP: 10.233.31.3 # 服务ip
+    persistence:
+      enabled: false
+      size: "20Gi"
+      storageClass: "-"
+
+externalDatabase:
+  enabled: false
+  type: "mysql"
+  host: "127.0.0.1"
+  port: "3306"
+  username: "root"
+  password: "ezdata123"
+  database: "ezdata"
+
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: "ezdata123"
+    db: 1
+  # 修改集群架构 architecture，默认是主从（replication，3个节点），可以修改为 standalone 单机模式
+  architecture: standalone
+  ports:
+    redis: 6379
+  master:
+    service:
+      clusterIP: 10.233.31.4
+  # 修改 storageClass 为 managed-nfs-storage
+  storageClass: "managed-nfs-storage"
+
+externalRedis:
+  enabled: false
+  host: "127.0.0.1"
+  port: 6379
+  username: ""
+  password: "ezdata123"
+  db: 1
+
+minio:
+  enabled: true
+  auth:
+    rootUser: "minio"
+    rootPassword: "ezdata123"
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName:
+    annotations: {}
+  defaultBuckets: "ezdata"
+  service:
+    clusterIP: 10.233.31.5 # 服务ip
+    publicIP: 101.35.23.52
+
+externalMinio:
+  enabled: false
+  host: "127.0.0.1"
+  publicIP: "127.0.0.1"
+  port: 9000
+  username: "minio"
+  password: "ezdata123"
+  bucket: "ezdata"
+
+elasticsearch:
+  enabled: true
+  replicas: 1
+  service:
+    clusterIP: 10.233.31.6
+
+
+externalElasticSearch:
+  enabled: false
+  hosts: "http://elastic:ezdata123@127.0.0.1:9200"
+
+
+llm:
+  enabled: true
+#  type: openai
+#  url: https://api.openai-proxy.com/v1
+#  api_key: REDACTEDXXX
+#  model: gpt-3.5-turbo
+  type: gradio
+  url: https://s5k.cn/api/v1/studio/ZhipuAI/glm-4-9b-chat-vllm/gradio/
+
+rag:
+  # EMBEDDING_TYPE=dashscope
+  EMBEDDING_MODEL: text-embedding-v3
+  EMBEDDING_CACHE: 1
+  # VECTOR_STORE_TYPE=elasticsearch
+  VECTOR_STORE_INDEX: rag_vector_index
+  TEXT_STORE_TYPE: elasticsearch
+  TEXT_STORE_INDEX: rag_text_index
+  # RERANK_TYPE=dashscope
+  DASHSCOPE_API_KEY: REDACTEDXXXX
+  # firecrawl
+  FIRECRAWL_API_KEY: fc-XXXX
+  FIRECRAWL_URL: https://api.firecrawl.dev

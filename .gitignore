@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+.env
+.env.*
+build/
+dist/
+.eggs/
+*.egg-info/
+.coverage*
+htmlcov/
+
+# Node
+node_modules/
+web/.vite/
+web/dist/
+web/.cache/
+web/npm-debug.log*
+web/yarn-error.log*
+web/pnpm-lock.yaml
+web/.env.local
+web/.env.*.local
+
+# OS/IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+
+# Logs
+logs/
+*.log
+
+# Others
+.tmp/
+.cache/
+~
