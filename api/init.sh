@@ -1,4 +1,9 @@
-unlink /var/run/supervisor.sock
+set -euo pipefail
+
+# 确保 socket 清理
+unlink /var/run/supervisor.sock 2>/dev/null || true
+
+# 启动 supervisord
 supervisord -c supervisord.ini
 if [ $run_upgrade == 1 ]; then
   echo "检查升级版本"
@@ -12,7 +17,8 @@ if [ $run_upgrade == 1 ]; then
       pip install --upgrade "$package" -i https://pypi.doubanio.com/simple
   done
 fi
-python init_system.py
+# 可选：初始化系统（本地开发可跳过）
+# python init_system.py
 if [ $run_web == 1 ]; then
   echo "开启web服务"
   # 执行命令，开启web服务

@@ -43,3 +43,10 @@ logs/
 .tmp/
 .cache/
 ~
+
+# Local venv and runtime artifacts
+ezdata/
+*.pid
+*.out
+api/supervisord.pid
+web/package-lock.json

@@ -3,7 +3,8 @@ from models import Notice, User
 from web_apps import db
 from utils.common_utils import parse_json, format_date, request_url
 from web_apps.notice.services import NoticeSendService
-from etl.libs.kafka_utils import Producer
+# 延迟引入Kafka，避免未安装/未配置Kafka导致后端无法启动
+Producer = None
 
 
 def handle_alert_forward(alert_obj, forward_conf_list):
@@ -46,11 +47,18 @@ def handle_alert_forward(alert_obj, forward_conf_list):
                 res = request_url(url=webhook_url, json=alert_json, method=webhook_method, headers=webhook_header)
                 print(res, alert_json)
             if forward_type == 'kafka':
-                # kafka转发
-                topic = forward_conf.get('topic')
-                producer = Producer(topic, **{'bootstrap_servers': forward_conf.get('bootstrap_servers')})
-                alert_json = json.dumps(alert_obj.to_dict(), ensure_ascii=False)
-                print(alert_json)
-                producer.send(alert_json)
+                # kafka转发（延迟导入，若未安装或未配置则跳过并记录错误）
+                try:
+                    global Producer
+                    if Producer is None:
+                        from etl.libs.kafka_utils import Producer as _Producer
+                        Producer = _Producer
+                    topic = forward_conf.get('topic')
+                    producer = Producer(topic, **{'bootstrap_servers': forward_conf.get('bootstrap_servers')})
+                    alert_json = json.dumps(alert_obj.to_dict(), ensure_ascii=False)
+                    print(alert_json)
+                    producer.send(alert_json)
+                except Exception as kafka_err:
+                    print('Kafka forward disabled or failed:', kafka_err)
         except Exception as e:
             print(e)

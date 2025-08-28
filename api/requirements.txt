@@ -30,7 +30,7 @@ elasticsearch==7.15.2
 redis==4.0.2
 kafka-python==2.0.2
 # llm相关
-pydantic==2.7.3
+pydantic>=2.7.4,<3
 langchain==0.2.13
 langchain-community==0.2.12
 langchain-openai==0.1.21
