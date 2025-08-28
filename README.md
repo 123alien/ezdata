@@ -92,3 +92,22 @@ celery -A tasks worker
 celery -A tasks flower
 ```
 
+分支与发布策略
+-----------------------------------
+- 主分支（main）：始终保持可发布状态，保护分支，仅允许通过 Pull Request 合并。
+- 开发分支（develop，可选）：用于日常集成，按需创建；也可以直接从 feature 向 main 发起 PR。
+- 功能分支（feature/*）：从 main（或 develop）拉出，完成后通过 PR 合并，命名如 `feature/etl-scheduler-opt`。
+- 修复分支（fix/* 或 hotfix/*）：用于缺陷修复或紧急修复，完成后合并回 main，并尽可能回合到 develop。
+- 发布标签（tags）：使用语义化版本 `vX.Y.Z` 打标签，例如 `v1.2.0`。补丁修复递增 Z、向后兼容新增递增 Y、破坏式变更递增 X。
+
+提交信息规范
+-----------------------------------
+- `feat:` 新功能；`fix:` 缺陷修复；`docs:` 文档；`chore:` 杂项；`refactor:` 重构；`perf:` 性能优化；`test:` 测试；`build:` 构建配置；`ci:` CI 配置。
+- 示例：`feat(task): 增加 DAG 任务模板的并发控制`。
+
+发布流程（示例）
+-----------------------------------
+1. 功能与修复合并到 main 后，更新版本号并生成变更日志。
+2. 创建发布标签：`git tag vX.Y.Z && git push origin vX.Y.Z`。
+3. 触发构建/镜像流水线并产出产物（如 Docker 镜像、前端构建包）。
+
