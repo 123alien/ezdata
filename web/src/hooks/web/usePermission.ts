@@ -91,6 +91,10 @@ export function usePermission() {
 
     if (PermissionModeEnum.BACK === permMode) {
       const allCodeList = permissionStore.getPermCodeList as string[];
+      // 管理员或拥有通配符权限时，放行所有按钮权限
+      if (allCodeList && allCodeList.includes('*')) {
+        return true;
+      }
       if (!isArray(value) && allCodeList && allCodeList.length > 0) {
         //=============================工作流权限判断-显示-begin==============================================
         if (formData) {
@@ -102,6 +106,7 @@ export function usePermission() {
         //=============================工作流权限判断-显示-end==============================================
         return allCodeList.includes(value);
       }
+      // 数组场景同样支持通配符放行
       return (intersection(value, allCodeList) as string[]).length > 0;
     }
     return true;
