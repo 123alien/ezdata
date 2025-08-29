@@ -44,7 +44,8 @@ celery_app.conf.update(
     CELERYD_FORCE_EXECV=True,    # 有些情况下可以防止死锁
     CELERYD_MAX_TASKS_PER_CHILD=500,    # 每个worker最多执行n个任务就会被销毁重新开启进程，可防止内存泄露
     # CELERYD_TASK_TIME_LIMIT=60 * 60 * 24,   # 单个任务的运行时间不超过此值，否则会被SIGKILL 信号杀死
-    # CELERY_IGNORE_RESULT=False,  # 是否忽略结果,
+    CELERY_IGNORE_RESULT=True,  # 忽略结果以避免后端问题
+    CELERY_RESULT_BACKEND=None,  # 明确禁用结果后端
     # 任务结果保留时间
     CELERY_TASK_RESULT_EXPIRES=60 * 60
 )
