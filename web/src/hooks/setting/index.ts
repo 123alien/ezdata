@@ -29,18 +29,25 @@ export const useGlobSetting = (): Readonly<GlobConfig> => {
   // 短标题：替换shortName的下划线为空格（空值保护）
   const safeShortName = (VITE_GLOB_APP_SHORT_NAME ?? '') + '';
   const shortTitle = safeShortName.replace(/_/g, " ");
+  // 空值保护，确保为字符串
+  const safeApiUrl = (VITE_GLOB_API_URL ?? '') + '';
+  const safeUrlPrefix = (VITE_GLOB_API_URL_PREFIX ?? '') + '';
+  const safeDomainUrl = (VITE_GLOB_DOMAIN_URL ?? '') + '';
+  const safeCasBaseUrl = (VITE_GLOB_APP_CAS_BASE_URL ?? '') + '';
+  const safeQiankunMicroAppEntry = (VITE_GLOB_QIANKUN_MICRO_APP_ENTRY ?? '') + '';
+
   // Take global configuration
   const glob: Readonly<GlobConfig> = {
     title: VITE_GLOB_APP_TITLE,
-    domainUrl: VITE_GLOB_DOMAIN_URL,
-    apiUrl: VITE_GLOB_API_URL,
+    domainUrl: safeDomainUrl,
+    apiUrl: safeApiUrl,
     shortName: VITE_GLOB_APP_SHORT_NAME,
     shortTitle: shortTitle,
     openSso: VITE_GLOB_APP_OPEN_SSO,
     openQianKun: VITE_GLOB_APP_OPEN_QIANKUN,
-    casBaseUrl: VITE_GLOB_APP_CAS_BASE_URL,
-    urlPrefix: VITE_GLOB_API_URL_PREFIX,
-    uploadUrl: VITE_GLOB_DOMAIN_URL,
+    casBaseUrl: safeCasBaseUrl,
+    urlPrefix: safeUrlPrefix,
+    uploadUrl: safeApiUrl || safeDomainUrl,
     viewUrl: VITE_GLOB_ONLINE_VIEW_URL,
     // 当前是否运行在 electron 平台
     isElectronPlatform: VITE_GLOB_RUN_PLATFORM === 'electron',
@@ -48,7 +55,7 @@ export const useGlobSetting = (): Readonly<GlobConfig> => {
     // 【JEECG作为乾坤子应用】是否以乾坤子应用模式启动
     isQiankunMicro: VITE_GLOB_QIANKUN_MICRO_APP_NAME != null && VITE_GLOB_QIANKUN_MICRO_APP_NAME !== '',
     // 【JEECG作为乾坤子应用】乾坤子应用入口
-    qiankunMicroAppEntry: VITE_GLOB_QIANKUN_MICRO_APP_ENTRY,
+    qiankunMicroAppEntry: safeQiankunMicroAppEntry,
   };
 
   // 【JEECG作为乾坤子应用】乾坤子应用下，需要定义一下

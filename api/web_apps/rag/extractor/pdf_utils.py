@@ -170,7 +170,7 @@ def extract_pdf_elements(pdf_file: Union[str, pathlib.Path, BufferedReader, Byte
     """
     if detect_pdf_invalid_chars2(pdf_file):
         return _extract_pdf_as_image_elements(pdf_file)
-    MAX_PAGES = 300
+    MAX_PAGES = 1000
     MAX_PER_PAGE_ELEMENTS = 300
 
     results = []
@@ -178,7 +178,9 @@ def extract_pdf_elements(pdf_file: Union[str, pathlib.Path, BufferedReader, Byte
     with fitz.open(pdf_file) as doc:
         total_page = len(doc)
         if total_page > MAX_PAGES:
-            raise RuntimeError(f"{pdf_file.name}文件超过了{MAX_PAGES}页")
+            import os
+            file_name = os.path.basename(pdf_file)
+            raise RuntimeError(f"{file_name}文件超过了{MAX_PAGES}页")
 
         for index in range(0, total_page):
             page: Page = doc[index]

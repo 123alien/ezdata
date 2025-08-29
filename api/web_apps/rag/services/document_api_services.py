@@ -127,8 +127,15 @@ class DocumentApiService(object):
             return gen_json_response(code=400, msg='未找到数据')
         # 训练文档
         user_info = get_auth_token_info()
-        self_train_rag_data.apply_async(args=(obj.id, {'user_name': user_info['username']}, 'document',))
-        return gen_json_response(msg='任务发送成功', extends={'success': True})
+        # 直接调用训练函数，绕过Celery避免EntryPoints问题
+        from web_apps.rag.services.rag_service import train_document
+        try:
+            # 设置用户信息到metadata中
+            metadata = {'user_name': user_info['username']}
+            train_document(obj.id, metadata=metadata)
+            return gen_json_response(msg='训练任务已启动', extends={'success': True})
+        except Exception as e:
+            return gen_json_response(code=500, msg=f'训练任务启动失败: {str(e)}', extends={'success': False})
 
     @staticmethod
     def add_obj(req_dict):
@@ -149,8 +156,13 @@ class DocumentApiService(object):
         db.session.flush()
         # 训练文档
         user_info = get_auth_token_info()
-        self_train_rag_data.apply_async(args=(obj.id, {'user_name': user_info['username']}, 'document',))
-        return gen_json_response(msg='添加成功', extends={'success': True})
+        # 直接调用训练函数，绕过Celery避免EntryPoints问题
+        from web_apps.rag.services.rag_service import train_document
+        try:
+            train_document(obj.id, metadata={'user_name': user_info['username']})
+            return gen_json_response(msg='添加成功', extends={'success': True})
+        except Exception as e:
+            return gen_json_response(code=500, msg=f'添加成功但训练任务启动失败: {str(e)}', extends={'success': True})
     
     @staticmethod
     def edit_obj(req_dict):

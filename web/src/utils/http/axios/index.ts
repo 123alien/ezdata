@@ -112,7 +112,7 @@ const transform: AxiosTransform = {
       isStartWithHttp = requestUrl.startsWith('file://');
     }
     // update-end----author:sunjianlei---date:20250411---for：【QQYUN-9685】构建 electron 桌面应用
-    if (!isStartWithHttp && joinPrefix) {
+    if (!isStartWithHttp && joinPrefix && urlPrefix) {
       config.url = `${urlPrefix}${config.url}`;
     }
 

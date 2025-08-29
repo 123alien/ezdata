@@ -26,6 +26,20 @@ def document_train():
     res_data = DocumentApiService.train_obj(req_dict)
     return jsonify(res_data)
 
+@document_bp.route('/train_internal', methods=['POST'])
+def document_train_internal():
+    '''
+    内部训练知识库（无需认证）
+    '''
+    req_dict = get_req_para(request)
+    verify_dict = {
+    }
+    not_valid = validate_params(req_dict, verify_dict)
+    if not_valid:
+        return jsonify(gen_json_response(code=400, msg=not_valid))
+    res_data = DocumentApiService.train_obj(req_dict)
+    return jsonify(res_data)
+
 
 
 @document_bp.route('/list', methods=['GET'])

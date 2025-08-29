@@ -366,7 +366,9 @@ def train_document(document_id, metadata=None):
                 datasource_id = datamodel_obj.datasource_id
         document_obj = db.session.query(Document).filter(Document.id == document_id).first()
         if document_obj is None:
+            print(f"文档不存在: {document_id}")
             return
+        print(f"找到文档: {document_obj.id}, 名称: {document_obj.name}")
         # 标记训练中
         document_obj.status = 2
         db.session.add(document_obj)
@@ -377,10 +379,23 @@ def train_document(document_id, metadata=None):
             # 解析文件
             meta_data = parse_json(document_obj.meta_data)
             chunk_strategy = parse_json(document_obj.chunk_strategy)
+            
+            # 添加调试信息
+            print(f"训练文档: {document_obj.id}")
+            print(f"文档类型: {document_obj.document_type}")
+            print(f"meta_data: {meta_data}")
+            print(f"chunk_strategy: {chunk_strategy}")
+            
             setting_args = {}
             if document_obj.document_type == 'upload_file':
-                file_name = meta_data.get('upload_file').split('/')[-1]
-                setting_args['upload_file'] = file_name
+                upload_file_path = meta_data.get('upload_file')
+                print(f"上传文件路径: {upload_file_path}")
+                if upload_file_path:
+                    file_name = upload_file_path.split('/')[-1]
+                    setting_args['upload_file'] = file_name
+                    print(f"提取的文件名: {file_name}")
+                else:
+                    raise Exception("上传文件路径为空")
             else:
                 setting_args['website_info'] = WebsiteInfo(
                     url=meta_data.get('url'),
@@ -441,7 +456,13 @@ def train_document(document_id, metadata=None):
             db.session.flush()
             db.session.commit()
         except Exception as e:
-            print(e)
+            import traceback
+            error_msg = f"训练文档失败: {str(e)}\n{traceback.format_exc()}"
+            print(error_msg)
+            # 记录到日志
+            from utils.log_utils import get_logger
+            logger = get_logger('rag_service', 'rag_service')
+            logger.error(error_msg)
             # 标记训练失败
             document_obj.status = 4
             db.session.add(document_obj)

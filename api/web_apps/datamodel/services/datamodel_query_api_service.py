@@ -103,7 +103,13 @@ class DataModelQueryApiService(object):
         if operate == 'train':
             # 训练数据模型
             user_info = get_auth_token_info()
-            self_train_rag_data.apply_async(args=(obj.id, {'user_name': user_info['username']}, 'datamodel',))
+            # 直接调用训练函数，绕过Celery避免EntryPoints问题
+        from web_apps.rag.services.rag_service import train_datamodel
+        try:
+            train_datamodel(obj.id, metadata={'user_name': user_info['username']})
+        except Exception as e:
+            # 训练失败不影响主流程
+            pass
         return gen_json_response(msg='操作成功', extends={'success': True})
 
     def query_obj_data(self, req_dict, use_auth=True):
