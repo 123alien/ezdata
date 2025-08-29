@@ -20,7 +20,8 @@ import { joinTimestamp, formatRequestDate } from './helper';
 import { useUserStoreWithOut } from '/@/store/modules/user';
 import { cloneDeep } from "lodash-es";
 const globSetting = useGlobSetting();
-const urlPrefix = globSetting.urlPrefix;
+// 防止 urlPrefix 未定义导致拼接成 'undefined/...'，设置安全默认值
+const urlPrefix = globSetting.urlPrefix || '';
 const { createMessage, createErrorModal } = useMessage();
 
 /**
@@ -45,7 +46,7 @@ const transform: AxiosTransform = {
     // 错误的时候返回
 
     const { data } = res;
-    if (!data) {
+    if (data == null) {
       // return '[HTTP] Request has no return value';
       throw new Error(t('sys.api.apiRequestFailed'));
     }
@@ -55,8 +56,10 @@ const transform: AxiosTransform = {
     const result = data.data;
     const message = data.msg;
     const success = data.success || false;
-    // 这里逻辑可以根据项目进行修改
-    const hasSuccess = data && Reflect.has(data, 'code') && (code === ResultEnum.SUCCESS || code === 200);
+    // 这里逻辑可以根据项目进行修改（空值与类型保护，避免 Reflect.has 非对象报错）
+    const isObjectData = typeof data === 'object' && data !== null;
+    const hasCodeField = isObjectData && 'code' in (data as Record<string, any>);
+    const hasSuccess = hasCodeField && (code === ResultEnum.SUCCESS || code === 200);
     if (hasSuccess) {
       if (success && message && options.successMessageMode === 'success') {
         //信息成功提示

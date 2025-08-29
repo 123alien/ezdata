@@ -26,8 +26,9 @@ export const useGlobSetting = (): Readonly<GlobConfig> => {
   //   );
   // }
 
-  // 短标题：替换shortName的下划线为空格
-  const shortTitle = VITE_GLOB_APP_SHORT_NAME.replace(/_/g, " ");
+  // 短标题：替换shortName的下划线为空格（空值保护）
+  const safeShortName = (VITE_GLOB_APP_SHORT_NAME ?? '') + '';
+  const shortTitle = safeShortName.replace(/_/g, " ");
   // Take global configuration
   const glob: Readonly<GlobConfig> = {
     title: VITE_GLOB_APP_TITLE,
@@ -56,7 +57,9 @@ export const useGlobSetting = (): Readonly<GlobConfig> => {
   }
 
   // update-begin--author:sunjianlei---date:220250115---for：【QQYUN-10956】配置了自定义前缀，外部连接打不开，需要兼容处理
-  let domainURL = VITE_GLOB_DOMAIN_URL;
+  // 空值保护，确保为字符串
+  const domainURLRaw = (VITE_GLOB_DOMAIN_URL ?? '') + '';
+  let domainURL = domainURLRaw;
 
   // 如果不是以http(s)开头的，也不是以域名开头的，那么就是拼接当前域名
   if (!/^http(s)?/.test(domainURL) && !/^(\/\/)?(.*\.)?.+\..+/.test(domainURL)) {

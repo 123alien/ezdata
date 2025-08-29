@@ -77,7 +77,7 @@ export default ({ command, mode }: ConfigEnv): UserConfig => {
       host: true,
       // @ts-ignore
       https: false,
-      port: 5173,
+      port: 5177,
       // Load proxy configuration from .env
       proxy: createProxy(VITE_PROXY),
       // 合并 server 配置
