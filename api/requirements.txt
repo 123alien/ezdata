@@ -1,6 +1,7 @@
 # encoding: utf-8
 python-dotenv
 celery==5.2.7
+importlib-metadata<5.0
 celery_once==3.0.1
 flower==1.0.0
 eventlet==0.30.2
