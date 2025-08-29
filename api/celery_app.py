@@ -5,7 +5,7 @@ from celery_once import QueueOnce
 
 celery_app = Celery(
     broker=CELERY_BROKER_URL,
-    backend=CELERY_BACKEND_URL
+    backend=None  # 禁用后端以避免兼容性问题
 )
 celery_app.conf.ONCE = {
   'backend': 'celery_once.backends.Redis',
