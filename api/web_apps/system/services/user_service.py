@@ -133,7 +133,8 @@ class UserService(object):
         page = int(page)
         pagesize = int(pagesize)
         like_text = f'%"{depart_obj.id}"%'
-        join_objs = get_base_query(UserTenantJoin).filter(User.depart_id_list.like(like_text)).all()
+        # 按关联表 sys_user_tenant_join 的 depart_id_list 进行匹配，之前误用了 User.depart_id_list 属性
+        join_objs = get_base_query(UserTenantJoin).filter(UserTenantJoin.depart_id_list.like(like_text)).all()
         user_ids = [i.user_id for i in join_objs]
         query = get_base_query(User).filter(User.id.in_(user_ids))
         query = query.offset((page - 1) * pagesize)
@@ -702,8 +703,8 @@ class UserService(object):
                     user_id=user_obj.id
                 )
 
-            # 设置部门列表（只包含属于该租户的部门）
-            if 'depart_id_list' in req_dict:
+            # 设置部门列表（只包含属于该租户的部门）；仅在传入非空时更新，避免误清空
+            if 'depart_id_list' in req_dict and req_dict.get('depart_id_list') not in [None, '', [], '[]']:
                 depart_ids = req_dict.get('depart_id_list', [])
                 if isinstance(depart_ids, str):
                     try:
@@ -765,11 +766,24 @@ class UserService(object):
         if obj is None:
             return gen_json_response(code=400, msg='找不到该用户！')
 
-        # 更新用户基本信息
+        # 更新用户基本信息（含日期健壮性处理）
         for k in ['nickname', 'work_no', 'user_identity', 'avatar',
                   'birthday', 'sex', 'email', 'phone', 'tenant_id']:
             if k in req_dict:
-                setattr(obj, k, req_dict.get(k))
+                value = req_dict.get(k)
+                # 处理无效日期：前端可能传入 'Invalid Date' 或空字符串
+                if k == 'birthday':
+                    if value in [None, '', 'Invalid Date', 'invalid date', 'NaN', 'null', 'undefined']:
+                        value = None
+                    else:
+                        # 尝试截断/规范到日期格式
+                        try:
+                            # 只保留前19位时间戳或前10位日期
+                            if isinstance(value, str):
+                                value = value[:19]
+                        except Exception:
+                            value = None
+                setattr(obj, k, value)
 
         # 更新密码（如果有）
         if 'password' in req_dict and req_dict['password']:
@@ -821,7 +835,7 @@ class UserService(object):
                     join_obj.depart_id_list = json.dumps([str(d[0]) for d in valid_depart_ids])
 
                 # 设置职务列表（只包含属于该租户的职务）
-                if 'post_id_list' in req_dict:
+                if 'post_id_list' in req_dict and req_dict.get('post_id_list') not in [None, '', [], '[]']:
                     post_ids = req_dict.get('post_id_list', [])
                     if isinstance(post_ids, str):
                         try:
@@ -836,7 +850,7 @@ class UserService(object):
                     join_obj.post_id_list = json.dumps([str(p[0]) for p in valid_post_ids])
 
                 # 设置角色列表（只包含属于该租户的角色）
-                if 'role_id_list' in req_dict:
+                if 'role_id_list' in req_dict and req_dict.get('role_id_list') not in [None, '', [], '[]']:
                     role_ids = req_dict.get('role_id_list', [])
                     if isinstance(role_ids, str):
                         try:
@@ -867,10 +881,20 @@ class UserService(object):
             join_objs = db.session.query(UserTenantJoin).filter(
                 UserTenantJoin.user_id == obj.id
             ).all()
+            # 若用户尚无任何租户关联，但本次提交包含部门/职务/角色，则为当前用户租户创建一条关联记录
+            if not join_objs:
+                seed_join = UserTenantJoin(
+                    tenant_id=obj.tenant_id or 1,
+                    user_id=obj.id
+                )
+                set_insert_user(seed_join)
+                db.session.add(seed_join)
+                db.session.flush()
+                join_objs = [seed_join]
 
             for join_obj in join_objs:
-                # 更新部门列表（只包含属于该租户的部门）
-                if 'depart_id_list' in req_dict:
+                # 更新部门列表（只在传入非空时更新，避免误清空）
+                if 'depart_id_list' in req_dict and req_dict.get('depart_id_list') not in [None, '', [], '[]']:
                     depart_ids = req_dict.get('depart_id_list', [])
                     if isinstance(depart_ids, str):
                         try:
@@ -885,7 +909,7 @@ class UserService(object):
                     join_obj.depart_id_list = json.dumps([str(d[0]) for d in valid_depart_ids])
 
                 # 更新职务列表（只包含属于该租户的职务）
-                if 'post_id_list' in req_dict:
+                if 'post_id_list' in req_dict and req_dict.get('post_id_list') not in [None, '', [], '[]']:
                     post_ids = req_dict.get('post_id_list', [])
                     if isinstance(post_ids, str):
                         try:
@@ -900,7 +924,7 @@ class UserService(object):
                     join_obj.post_id_list = json.dumps([str(p[0]) for p in valid_post_ids])
 
                 # 更新角色列表（只包含属于该租户的角色）
-                if 'role_id_list' in req_dict:
+                if 'role_id_list' in req_dict and req_dict.get('role_id_list') not in [None, '', [], '[]']:
                     role_ids = req_dict.get('role_id_list', [])
                     if isinstance(role_ids, str):
                         try:
