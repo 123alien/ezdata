@@ -108,4 +108,8 @@ BLUEPRINT_DICT = {
         'blueprint': 'web_apps.llm.app_views.chat_app_bp',
         'url_prefix': '/api/llm/chat_app'
     },
+    'external_rag': {
+        'blueprint': 'web_apps.rag.views.external_api_views.external_rag_bp',
+        'url_prefix': '/api/external/rag'
+    },
 }
