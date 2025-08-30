@@ -55,9 +55,8 @@
               <h4>💡 使用技巧</h4>
               <ul>
                 <li><strong>问题描述</strong>：尽量详细描述问题，获得更准确的答案</li>
-                <li><strong>相似度阈值</strong>：调整阈值可以控制检索结果的精确度</li>
-                <li><strong>自动检索</strong>：开启自动检索可以实时获得结果</li>
-                <li><strong>结果导出</strong>：可以导出对话记录和搜索结果</li>
+                <li><strong>预设问题</strong>：点击预设问题快速开始对话</li>
+                <li><strong>对话导出</strong>：可以导出对话记录</li>
                 <li><strong>快捷键</strong>：使用 Ctrl+Enter 快速发送消息</li>
               </ul>
             </div>
@@ -76,15 +75,7 @@
                   </ul>
                 </a-collapse-panel>
                 
-                <a-collapse-panel key="q2" header="搜索无结果怎么办？">
-                  <p>可以尝试：</p>
-                  <ul>
-                    <li>降低相似度阈值</li>
-                    <li>增加结果数量</li>
-                    <li>使用不同的关键词</li>
-                    <li>检查服务是否已初始化</li>
-                  </ul>
-                </a-collapse-panel>
+
                 
                 <a-collapse-panel key="q3" header="如何获得更好的答案？">
                   <p>建议：</p>
@@ -92,7 +83,7 @@
                     <li>使用具体的问题描述</li>
                     <li>参考预设问题格式</li>
                     <li>如果答案不满意，可以重新生成</li>
-                    <li>结合知识检索功能获得更多信息</li>
+                    <li>尝试不同的提问方式</li>
                   </ul>
                 </a-collapse-panel>
               </a-collapse>
@@ -107,9 +98,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { PageWrapper } from '/@/components/Page';
-import ServiceStatus from './components/ServiceStatus.vue';
 import ChatInterface from './components/ChatInterface.vue';
-import KnowledgeSearch from './components/KnowledgeSearch.vue';
 
 const activeKeys = ref(['1']);
 </script>

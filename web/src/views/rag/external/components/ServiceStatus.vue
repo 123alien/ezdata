@@ -81,13 +81,13 @@
       <a-row :gutter="16">
         <a-col :span="24">
           <a-descriptions title="服务端点" :column="2" size="small">
-            <a-descriptions-item 
-              v-for="(url, name) in serviceStatus?.endpoints" 
-              :key="name"
-              :label="getEndpointLabel(name)"
-            >
-              <a-tag color="blue">{{ url }}</a-tag>
-            </a-descriptions-item>
+                      <a-descriptions-item 
+            v-for="(url, name) in (serviceStatus?.endpoints || {})" 
+            :key="name"
+            :label="getEndpointLabel(name)"
+          >
+            <a-tag color="blue">{{ url }}</a-tag>
+          </a-descriptions-item>
           </a-descriptions>
         </a-col>
       </a-row>
@@ -102,7 +102,7 @@
         >
           <template #description>
             <a-space direction="vertical" size="small">
-              <div v-for="(test, key) in testResult" :key="key">
+              <div v-for="(test, key) in (testResult || {})" :key="key">
                 <strong>{{ getTestLabel(key) }}:</strong>
                 <a-tag :color="test.status === 'success' ? 'green' : 'red'">
                   {{ test.status === 'success' ? '成功' : '失败' }}
@@ -143,13 +143,17 @@ const refreshStatus = async () => {
   try {
     refreshing.value = true;
     const response = await getStatus();
-    if (response.code === 200) {
-      serviceStatus.value = response.data;
+    console.log('API Response:', response); // 调试信息
+    // defHttp 已经处理了响应，直接返回 data
+    if (response) {
+      serviceStatus.value = response;
       message.success('状态刷新成功');
     } else {
+      console.error('Response error:', response); // 调试信息
       message.error('状态刷新失败');
     }
   } catch (error) {
+    console.error('API Error:', error); // 调试信息
     message.error('状态刷新失败: ' + error);
   } finally {
     refreshing.value = false;
@@ -161,13 +165,17 @@ const initializeService = async () => {
   try {
     initializing.value = true;
     const response = await initializeRAG();
-    if (response.code === 200) {
+    console.log('Initialize Response:', response); // 调试信息
+    // defHttp 已经处理了响应
+    if (response) {
       message.success('服务初始化成功');
       await refreshStatus();
     } else {
+      console.error('Initialize error:', response); // 调试信息
       message.error('服务初始化失败');
     }
   } catch (error) {
+    console.error('Initialize Error:', error); // 调试信息
     message.error('服务初始化失败: ' + error);
   } finally {
     initializing.value = false;
@@ -179,13 +187,17 @@ const testConnection = async () => {
   try {
     testing.value = true;
     const response = await testConnectionAPI();
-    if (response.code === 200) {
-      testResult.value = response.data;
+    console.log('Test Response:', response); // 调试信息
+    // defHttp 已经处理了响应
+    if (response) {
+      testResult.value = response;
       message.success('连接测试完成');
     } else {
+      console.error('Test error:', response); // 调试信息
       message.error('连接测试失败');
     }
   } catch (error) {
+    console.error('Test Error:', error); // 调试信息
     message.error('连接测试失败: ' + error);
   } finally {
     testing.value = false;
