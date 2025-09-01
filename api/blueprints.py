@@ -110,6 +110,10 @@ BLUEPRINT_DICT = {
     },
     'external_rag': {
         'blueprint': 'web_apps.rag.views.external_api_views.external_rag_bp',
-        'url_prefix': '/api/external/rag'
+        'url_prefix': '/api/rag/external'
+    },
+    'knowledge_base': {
+        'blueprint': 'web_apps.rag.views.kb_views.kb_bp',
+        'url_prefix': '/api/rag/kb'
     },
 }

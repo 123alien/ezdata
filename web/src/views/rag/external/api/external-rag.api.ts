@@ -2,17 +2,17 @@ import { defHttp } from '/@/utils/http/axios';
 
 export enum Api {
   // 基础接口
-  health = '/external/rag/health',
-  initialize = '/external/rag/initialize',
-  status = '/external/rag/status',
-  test = '/external/rag/test',
+  health = '/rag/external/health',
+  initialize = '/rag/external/initialize',
+  status = '/rag/external/status',
+  test = '/rag/external/test',
   
   // 查询接口
-  chat = '/external/rag/chat',
-  text = '/external/rag/text',
-  openai = '/external/rag/v1/chat/completions',
-  search = '/external/rag/search',
-  searchText = '/external/rag/search_text',
+  chat = '/rag/external/chat',
+  text = '/rag/external/text',
+  openai = '/rag/external/v1/chat/completions',
+  search = '/rag/external/search',
+  searchText = '/rag/external/search_text',
 }
 
 /**
