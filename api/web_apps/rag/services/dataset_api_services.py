@@ -54,6 +54,11 @@ class DatasetApiService(object):
         pagesize = int(req_dict.get('pagesize', 10))
         query = get_base_query(Dataset)
 
+        # 仅查看本人创建的数据集（个人空间隔离）
+        user_info = get_auth_token_info()
+        if user_info and user_info.get('username'):
+            query = query.filter(Dataset.create_by == user_info.get('username'))
+
         # 名称 查询逻辑
         name = req_dict.get('name', '')
         if name != '':
@@ -82,6 +87,10 @@ class DatasetApiService(object):
         获取全量列表
         '''
         query = get_base_query(Dataset)
+        # 仅本人
+        user_info = get_auth_token_info()
+        if user_info and user_info.get('username'):
+            query = query.filter(Dataset.create_by == user_info.get('username'))
         ids = req_dict.get('ids', '')
         if ids:
             ids = ids.split(',')
@@ -103,6 +112,10 @@ class DatasetApiService(object):
             Dataset.del_flag == 0).first()
         if not obj:
             return gen_json_response(code=400, msg='未找到数据')
+        # 权限校验：仅本人可见
+        user_info = get_auth_token_info()
+        if not user_info or obj.create_by != user_info.get('username'):
+            return gen_json_response(code=403, msg='无权限访问该数据集')
         dic = serialize_dataset_model(obj, ser_type='detail')
         return gen_json_response(data=dic)
 
@@ -147,6 +160,10 @@ class DatasetApiService(object):
         obj = db.session.query(Dataset).filter(Dataset.id == obj_id).first()
         if obj is None:
             return gen_json_response(code=400, msg='未找到数据')
+        # 权限校验：仅本人可编辑
+        user_info = get_auth_token_info()
+        if not user_info or obj.create_by != user_info.get('username'):
+            return gen_json_response(code=403, msg='无权限编辑该数据集')
         for key in req_dict:
             if key in []:
                 setattr(obj, key, json.dumps(req_dict[key], ensure_ascii=False, indent=2))
@@ -166,6 +183,10 @@ class DatasetApiService(object):
         del_obj = db.session.query(Dataset).filter(Dataset.id == obj_id).first()
         if del_obj is None:
             return gen_json_response(code=400, msg='未找到数据')
+        # 权限校验：仅本人可删除
+        user_info = get_auth_token_info()
+        if not user_info or del_obj.create_by != user_info.get('username'):
+            return gen_json_response(code=403, msg='无权限删除该数据集')
         if del_obj.built_in == 1:
             return gen_json_response(code=400, msg='内置数据集，禁止删除')
         del_obj.del_flag = 1
@@ -183,6 +204,11 @@ class DatasetApiService(object):
         if isinstance(del_ids, str):
             del_ids = del_ids.split(',')
         del_objs = db.session.query(Dataset).filter(Dataset.id.in_(del_ids)).all()
+        # 权限校验：仅本人创建的可删除
+        user_info = get_auth_token_info()
+        for i in list(del_objs):
+            if not user_info or i.create_by != user_info.get('username'):
+                return gen_json_response(code=403, msg='含未授权数据集，已终止删除')
         has_built_in = [i for i in del_objs if i.built_in == 1] != []
         if has_built_in:
             return gen_json_response(code=400, msg='含有内置数据集，禁止删除')

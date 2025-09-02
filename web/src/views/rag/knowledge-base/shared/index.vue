@@ -28,18 +28,53 @@
         </template>
       </template>
     </a-table>
+    <!-- 只读文档查看弹窗 -->
+    <a-modal
+      v-model:open="documentModalVisible"
+      :title="(currentKb?.kb_name || '知识库') + ' - 文档列表'"
+      width="80%"
+      :footer="null"
+    >
+      <a-table
+        :columns="documentColumns"
+        :data-source="documentList"
+        :loading="documentLoading"
+        row-key="id"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'action'">
+            <a @click="viewDocument(record)">查看</a>
+          </template>
+        </template>
+      </a-table>
+    </a-modal>
+
+    <!-- 文档详情弹窗（简单JSON预览） -->
+    <a-modal
+      v-model:open="docDetailVisible"
+      title="文档详情"
+      width="700px"
+      :confirm-loading="docDetailLoading"
+      @ok="() => (docDetailVisible = false)"
+      @cancel="() => (docDetailVisible = false)"
+    >
+      <pre style="max-height: 60vh; overflow: auto; white-space: pre-wrap;">{{ JSON.stringify(docDetail, null, 2) }}</pre>
+    </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
-import { getSharedWithMe } from '/@/api/rag/knowledge-base.api';
+import { getSharedWithMe, getDocuments, getDocumentDetail } from '/@/api/rag/knowledge-base.api';
 
 const loading = ref(false);
 const sharedList = ref([]);
-const router = useRouter();
+// 文档查看（只读）
+const documentModalVisible = ref(false);
+const documentLoading = ref(false);
+const documentList = ref<any[]>([]);
+const currentKb = ref<any>(null);
 
 const columns = [
   { title: '知识库名称', dataIndex: 'kb_name', key: 'kb_name' },
@@ -47,6 +82,14 @@ const columns = [
   { title: '权限级别', dataIndex: 'permission_level', key: 'permission_level' },
   { title: '分享时间', dataIndex: 'create_time', key: 'create_time' },
   { title: '操作', key: 'action', width: 150 },
+];
+
+const documentColumns = [
+  { title: '文档名称', dataIndex: 'name', key: 'name' },
+  { title: '文档类型', dataIndex: 'document_type', key: 'document_type' },
+  { title: '状态', dataIndex: 'status', key: 'status' },
+  { title: '上传时间', dataIndex: 'create_time', key: 'create_time' },
+  { title: '操作', key: 'action', width: 120 },
 ];
 
 onMounted(() => {
@@ -65,13 +108,53 @@ const fetchSharedList = async () => {
   }
 };
 
-const viewKnowledgeBase = (record: any) => {
-  router.push({ path: '/rag/knowledge-base/my', query: { openDatasetId: String(record.kb_id) } });
+const viewKnowledgeBase = async (record: any) => {
+  currentKb.value = record;
+  documentModalVisible.value = true;
+  await fetchDocumentList(record.kb_id);
 };
+
+async function fetchDocumentList(datasetId: string) {
+  try {
+    documentLoading.value = true;
+    const res: any = await getDocuments({ dataset_id: datasetId });
+    if (res && res.code === 200) {
+      documentList.value = Array.isArray(res?.data?.records) ? res.data.records : [];
+    } else {
+      message.error(res?.msg || '获取文档列表失败');
+    }
+  } catch (e: any) {
+    message.error(e?.message || '获取文档列表失败');
+  } finally {
+    documentLoading.value = false;
+  }
+}
 
 const downloadDocuments = (record: any) => {
   message.info('下载文档功能待实现');
 };
+
+// 文档详情查看
+const docDetailVisible = ref(false);
+const docDetailLoading = ref(false);
+const docDetail = ref<Record<string, any> | null>(null);
+
+async function viewDocument(record: any) {
+  try {
+    docDetailVisible.value = true;
+    docDetailLoading.value = true;
+    const res: any = await getDocumentDetail({ id: record.id });
+    if (res && res.code === 200) {
+      docDetail.value = res.data || {};
+    } else {
+      message.error(res?.msg || '获取文档详情失败');
+    }
+  } catch (e: any) {
+    message.error(e?.message || '获取文档详情失败');
+  } finally {
+    docDetailLoading.value = false;
+  }
+}
 
 const getPermissionColor = (level: string) => {
   const colors = {
