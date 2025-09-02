@@ -176,6 +176,68 @@ def share_knowledge_base():
             'msg': f'分享知识库失败: {str(e)}'
         })
 
+@kb_bp.route('/share/list', methods=['GET'])
+def get_share_list():
+    """获取我分享出去的列表"""
+    try:
+        current_user = get_auth_token_info()
+        if not current_user:
+            return jsonify({'code': 401, 'data': None, 'msg': '用户未登录'})
+
+        page = int(request.args.get('page', 1))
+        size = int(request.args.get('size', 10))
+        result = KnowledgeBaseService.get_share_list(shared_by_id=current_user.get('id'), page=page, size=size)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'code': 500, 'data': None, 'msg': f'获取分享列表失败: {str(e)}'})
+
+@kb_bp.route('/share/update', methods=['POST', 'PUT'])
+def update_share_permission():
+    """更新分享权限"""
+    try:
+        current_user = get_auth_token_info()
+        if not current_user:
+            return jsonify({'code': 401, 'data': None, 'msg': '用户未登录'})
+        params = get_req_para(request)
+        share_id = params.get('share_id')
+        permission_level = params.get('permission_level')
+        if not share_id or not permission_level:
+            return jsonify({'code': 400, 'data': None, 'msg': '参数不完整'})
+        result = KnowledgeBaseService.update_share_permission(share_id=share_id, permission_level=permission_level, shared_by_id=current_user.get('id'))
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'code': 500, 'data': None, 'msg': f'更新分享失败: {str(e)}'})
+
+@kb_bp.route('/share/delete', methods=['POST', 'DELETE'])
+def revoke_share():
+    """撤销分享"""
+    try:
+        current_user = get_auth_token_info()
+        if not current_user:
+            return jsonify({'code': 401, 'data': None, 'msg': '用户未登录'})
+        params = get_req_para(request)
+        share_id = params.get('share_id')
+        if not share_id:
+            return jsonify({'code': 400, 'data': None, 'msg': '参数不完整'})
+        result = KnowledgeBaseService.revoke_share(share_id=share_id, shared_by_id=current_user.get('id'))
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'code': 500, 'data': None, 'msg': f'撤销分享失败: {str(e)}'})
+
+@kb_bp.route('/shared/list', methods=['GET'])
+def get_shared_with_me():
+    """获取共享给我的列表"""
+    try:
+        current_user = get_auth_token_info()
+        if not current_user:
+            return jsonify({'code': 401, 'data': None, 'msg': '用户未登录'})
+        page = int(request.args.get('page', 1))
+        size = int(request.args.get('size', 10))
+        result = KnowledgeBaseService.get_shared_with_me(user_id=current_user.get('id'), page=page, size=size)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'code': 500, 'data': None, 'msg': f'获取失败: {str(e)}'})
+
 @kb_bp.route('/detail/<kb_id>', methods=['GET'])
 def get_knowledge_base_detail(kb_id):
     """获取知识库详情"""

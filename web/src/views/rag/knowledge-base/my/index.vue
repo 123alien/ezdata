@@ -203,8 +203,17 @@ const documentColumns = [
 // 生命周期
 onMounted(() => {
   // 延迟一点时间再调用API，确保页面完全加载
-  setTimeout(() => {
-    fetchDatasetList();
+  setTimeout(async () => {
+    await fetchDatasetList();
+    // 若从“共享给我的”跳转携带 openDatasetId，则直接打开文档管理
+    const url = new URL(window.location.href);
+    const openId = url.searchParams.get('openDatasetId');
+    if (openId) {
+      const target = datasetList.value.find((d: any) => String(d.id) === String(openId));
+      if (target) {
+        manageDocuments(target);
+      }
+    }
   }, 100);
 });
 

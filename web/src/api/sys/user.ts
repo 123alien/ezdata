@@ -43,6 +43,8 @@ enum Api {
   getLoginQrcode = '/sys/getLoginQrcode',
   //监控二维码扫描状态
   getQrcodeToken = '/sys/getQrcodeToken',
+  // 用户列表
+  UserList = '/sys/user/list',
 }
 
 /**
@@ -211,6 +213,13 @@ export function getLoginQrcode() {
 export function getQrcodeToken(params) {
   let url = Api.getQrcodeToken;
   return defHttp.get({ url: url, params });
+}
+
+/**
+ * 用户列表（用于分享选择）
+ */
+export function getUserList(params?) {
+  return defHttp.get({ url: Api.UserList, params }, { isTransformResponse: false });
 }
 
 /**

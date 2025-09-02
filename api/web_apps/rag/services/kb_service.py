@@ -4,6 +4,7 @@ from utils.common_utils import gen_uuid
 from sqlalchemy import and_, or_
 from typing import List, Dict, Optional
 import json
+from models import User
 
 class KnowledgeBaseService:
     
@@ -265,3 +266,146 @@ class KnowledgeBaseService:
                 'data': None,
                 'msg': f'知识库分享失败: {str(e)}'
             }
+
+    @staticmethod
+    def get_share_list(shared_by_id: str, page: int = 1, size: int = 10) -> Dict:
+        """获取我分享出去的知识库列表"""
+        try:
+            query = db.session.query(KnowledgeBaseShare, UserKnowledgeBase, User).join(
+                UserKnowledgeBase, KnowledgeBaseShare.kb_id == UserKnowledgeBase.id
+            ).join(
+                User, KnowledgeBaseShare.shared_with_id == User.id
+            ).filter(
+                and_(
+                    KnowledgeBaseShare.shared_by_id == shared_by_id,
+                    KnowledgeBaseShare.del_flag == 0
+                )
+            ).order_by(KnowledgeBaseShare.create_time.desc())
+
+            total = query.count()
+            start = (page - 1) * size
+            items = query.offset(start).limit(size).all()
+
+            records = []
+            for share, kb, shared_user in items:
+                records.append({
+                    'id': share.id,
+                    'kb_id': kb.id,
+                    'kb_name': kb.name,
+                    'shared_with_id': share.shared_with_id,
+                    'shared_with_name': shared_user.nickname or shared_user.username,
+                    'permission_level': share.permission_level,
+                    'status': share.status,
+                    'create_time': share.create_time.strftime('%Y-%m-%d %H:%M:%S') if share.create_time else None,
+                })
+
+            return {
+                'code': 200,
+                'data': {
+                    'records': records,
+                    'total': total,
+                    'page': page,
+                    'size': size,
+                },
+                'msg': '获取成功'
+            }
+        except Exception as e:
+            return {
+                'code': 500,
+                'data': None,
+                'msg': f'获取分享列表失败: {str(e)}'
+            }
+
+    @staticmethod
+    def update_share_permission(share_id: str, permission_level: str, shared_by_id: str) -> Dict:
+        """更新分享权限"""
+        try:
+            share = db.session.query(KnowledgeBaseShare).filter(
+                and_(
+                    KnowledgeBaseShare.id == share_id,
+                    KnowledgeBaseShare.del_flag == 0
+                )
+            ).first()
+            if not share:
+                return {'code': 404, 'data': None, 'msg': '分享记录不存在'}
+
+            # 权限校验：只能由分享者修改
+            if str(share.shared_by_id) != str(shared_by_id):
+                return {'code': 403, 'data': None, 'msg': '无权限修改此分享'}
+
+            share.permission_level = permission_level
+            db.session.commit()
+            return {'code': 200, 'data': None, 'msg': '权限更新成功'}
+        except Exception as e:
+            db.session.rollback()
+            return {'code': 500, 'data': None, 'msg': f'更新失败: {str(e)}'}
+
+    @staticmethod
+    def revoke_share(share_id: str, shared_by_id: str) -> Dict:
+        """撤销分享（软删除或置为失效）"""
+        try:
+            share = db.session.query(KnowledgeBaseShare).filter(
+                and_(
+                    KnowledgeBaseShare.id == share_id,
+                    KnowledgeBaseShare.del_flag == 0
+                )
+            ).first()
+            if not share:
+                return {'code': 404, 'data': None, 'msg': '分享记录不存在'}
+
+            if str(share.shared_by_id) != str(shared_by_id):
+                return {'code': 403, 'data': None, 'msg': '无权限撤销此分享'}
+
+            share.status = 0
+            share.del_flag = 1
+            db.session.commit()
+            return {'code': 200, 'data': None, 'msg': '已撤销分享'}
+        except Exception as e:
+            db.session.rollback()
+            return {'code': 500, 'data': None, 'msg': f'撤销失败: {str(e)}'}
+
+    @staticmethod
+    def get_shared_with_me(user_id: str, page: int = 1, size: int = 10) -> Dict:
+        """获取共享给我的知识库列表"""
+        try:
+            query = db.session.query(KnowledgeBaseShare, UserKnowledgeBase, User).join(
+                UserKnowledgeBase, KnowledgeBaseShare.kb_id == UserKnowledgeBase.id
+            ).join(
+                User, KnowledgeBaseShare.shared_by_id == User.id
+            ).filter(
+                and_(
+                    KnowledgeBaseShare.shared_with_id == user_id,
+                    KnowledgeBaseShare.status == 1,
+                    KnowledgeBaseShare.del_flag == 0,
+                    UserKnowledgeBase.del_flag == 0,
+                )
+            ).order_by(KnowledgeBaseShare.create_time.desc())
+
+            total = query.count()
+            start = (page - 1) * size
+            items = query.offset(start).limit(size).all()
+
+            records = []
+            for share, kb, shared_by_user in items:
+                records.append({
+                    'id': share.id,
+                    'kb_id': kb.id,
+                    'kb_name': kb.name,
+                    'shared_by_id': share.shared_by_id,
+                    'shared_by_name': shared_by_user.nickname or shared_by_user.username,
+                    'permission_level': share.permission_level,
+                    'create_time': share.create_time.strftime('%Y-%m-%d %H:%M:%S') if share.create_time else None,
+                })
+
+            return {
+                'code': 200,
+                'data': {
+                    'records': records,
+                    'total': total,
+                    'page': page,
+                    'size': size,
+                },
+                'msg': '获取成功'
+            }
+        except Exception as e:
+            return {'code': 500, 'data': None, 'msg': f'获取失败: {str(e)}'}

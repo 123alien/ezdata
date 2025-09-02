@@ -2,32 +2,32 @@ import { defHttp } from '/@/utils/http/axios';
 
 export enum Api {
   // 知识库管理 - 使用ezdata自带的dataset API
-  GetDatasets = '/rag/dataset/list',                    // 获取知识库列表
-  CreateDataset = '/rag/dataset/add',                   // 创建知识库
-  UpdateDataset = '/rag/dataset/edit',                  // 更新知识库
-  DeleteDataset = '/rag/dataset/delete',                // 删除知识库
-  GetDatasetDetail = '/rag/dataset/queryById',          // 获取知识库详情
+  GetDatasets = '/api/rag/dataset/list',                    // 获取知识库列表
+  CreateDataset = '/api/rag/dataset/add',                   // 创建知识库
+  UpdateDataset = '/api/rag/dataset/edit',                  // 更新知识库
+  DeleteDataset = '/api/rag/dataset/delete',                // 删除知识库
+  GetDatasetDetail = '/api/rag/dataset/queryById',          // 获取知识库详情
   
   // 文档管理 - 使用ezdata自带的document API
-  GetDocuments = '/rag/document/list',                  // 获取文档列表
-  UploadDocument = '/rag/document/add',                 // 上传文档
-  UpdateDocument = '/rag/document/edit',                // 更新文档
-  DeleteDocument = '/rag/document/delete',              // 删除文档
-  GetDocumentDetail = '/rag/document/queryById',        // 获取文档详情
-  TrainDocument = '/rag/document/train',                // 训练文档（向量化）
+  GetDocuments = '/api/rag/document/list',                  // 获取文档列表
+  UploadDocument = '/api/rag/document/add',                 // 上传文档
+  UpdateDocument = '/api/rag/document/edit',                // 更新文档
+  DeleteDocument = '/api/rag/document/delete',              // 删除文档
+  GetDocumentDetail = '/api/rag/document/queryById',        // 获取文档详情
+  TrainDocument = '/api/rag/document/train',                // 训练文档（向量化）
   
   // TrustRAG向量化接口
-  TrustRAGVectorize = '/rag/external/vectorize',        // TrustRAG向量化
-  TrustRAGSearch = '/rag/external/search',              // TrustRAG检索
+  TrustRAGVectorize = '/api/rag/external/vectorize',        // TrustRAG向量化
+  TrustRAGSearch = '/api/rag/external/search',              // TrustRAG检索
   
   // 知识库分享 - 使用我们自定义的分享功能
-  GetShareList = '/rag/kb/share/list',
-  ShareKnowledgeBase = '/rag/kb/share/create',
-  UpdateSharePermission = '/rag/kb/share/update',
-  DeleteShare = '/rag/kb/share/delete',
+  GetShareList = '/api/rag/kb/share/list',
+  ShareKnowledgeBase = '/api/rag/kb/share',
+  UpdateSharePermission = '/api/rag/kb/share/update',
+  DeleteShare = '/api/rag/kb/share/delete',
   
   // 共享给我的
-  GetSharedWithMe = '/rag/kb/shared/list',
+  GetSharedWithMe = '/api/rag/kb/shared/list',
 }
 
 // ========== 知识库管理（ezdata dataset API）==========

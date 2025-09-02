@@ -33,10 +33,13 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
+import { getSharedWithMe } from '/@/api/rag/knowledge-base.api';
 
 const loading = ref(false);
 const sharedList = ref([]);
+const router = useRouter();
 
 const columns = [
   { title: '知识库名称', dataIndex: 'kb_name', key: 'kb_name' },
@@ -52,12 +55,18 @@ onMounted(() => {
 
 const fetchSharedList = async () => {
   loading.value = true;
-  // TODO: 调用API获取共享列表
-  loading.value = false;
+  try {
+    const res: any = await getSharedWithMe({ page: 1, size: 20 });
+    sharedList.value = Array.isArray(res?.data?.records) ? res.data.records : [];
+  } catch (e: any) {
+    message.error(e?.message || '获取共享列表失败');
+  } finally {
+    loading.value = false;
+  }
 };
 
 const viewKnowledgeBase = (record: any) => {
-  message.info('查看知识库功能待实现');
+  router.push({ path: '/rag/knowledge-base/my', query: { openDatasetId: String(record.kb_id) } });
 };
 
 const downloadDocuments = (record: any) => {

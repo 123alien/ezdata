@@ -31,7 +31,8 @@ export const useGlobSetting = (): Readonly<GlobConfig> => {
   const shortTitle = safeShortName.replace(/_/g, " ");
   // 空值保护，确保为字符串
   const safeApiUrl = (VITE_GLOB_API_URL ?? '') + '';
-  const safeUrlPrefix = (VITE_GLOB_API_URL_PREFIX ?? '') + '';
+  // 默认使用 /api 作为前缀，防止未配置时登录等接口变成 /sys/... 404
+  const safeUrlPrefix = (VITE_GLOB_API_URL_PREFIX || '/api') + '';
   const safeDomainUrl = (VITE_GLOB_DOMAIN_URL ?? '') + '';
   const safeCasBaseUrl = (VITE_GLOB_APP_CAS_BASE_URL ?? '') + '';
   const safeQiankunMicroAppEntry = (VITE_GLOB_QIANKUN_MICRO_APP_ENTRY ?? '') + '';
