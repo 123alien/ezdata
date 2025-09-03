@@ -81,6 +81,12 @@ export default ({ command, mode }: ConfigEnv): UserConfig => {
       // Load proxy configuration from .env
       proxy: {
         ...createProxy(VITE_PROXY),
+        // API 代理到后端服务
+        '/api': {
+          target: 'http://localhost:8001',
+          changeOrigin: true,
+          ws: true,
+        },
         // TrustRAG UI 代理（页面）- 优先匹配，避免被 /trustrag 捕获
         '/trustrag-ui': {
           target: 'http://localhost:3600',
