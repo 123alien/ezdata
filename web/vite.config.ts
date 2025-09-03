@@ -79,7 +79,41 @@ export default ({ command, mode }: ConfigEnv): UserConfig => {
       https: false,
       port: 5177,
       // Load proxy configuration from .env
-      proxy: createProxy(VITE_PROXY),
+      proxy: {
+        ...createProxy(VITE_PROXY),
+        // TrustRAG UI 代理（页面）- 优先匹配，避免被 /trustrag 捕获
+        '/trustrag-ui': {
+          target: 'http://localhost:3600',
+          changeOrigin: true,
+          ws: true,
+          rewrite: (path) => path.replace(/^\/trustrag-ui/, ''),
+        },
+        // NextJS 静态资源代理（UI 依赖）
+        '/_next': {
+          target: 'http://localhost:3600',
+          changeOrigin: true,
+          ws: true,
+        },
+        '/site.webmanifest': {
+          target: 'http://localhost:3600',
+          changeOrigin: true,
+        },
+        '/serviceWorkerRegister.js': {
+          target: 'http://localhost:3600',
+          changeOrigin: true,
+        },
+        '/favicon.ico': {
+          target: 'http://localhost:3600',
+          changeOrigin: true,
+        },
+        // TrustRAG 服务代理（API）
+        '/trustrag': {
+          target: 'http://localhost:8217',
+          changeOrigin: true,
+          ws: true,
+          rewrite: (path) => path.replace(/^\/trustrag/, ''),
+        },
+      },
       // 合并 server 配置
       ...serverOptions,
     },

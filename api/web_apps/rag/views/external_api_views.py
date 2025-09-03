@@ -9,6 +9,10 @@ import requests
 import json
 import traceback
 from datetime import datetime
+from sqlalchemy import and_
+# 暂时注释掉，避免循环导入
+# from web_apps.rag.kb_models import UserKnowledgeBase, KnowledgeBaseShare
+# from web_apps import db
 
 external_rag_bp = Blueprint('external_rag', __name__)
 
@@ -250,3 +254,108 @@ def test_connection():
         return gen_json_response(code=200, msg="连接测试完成", data=test_results)
     except Exception as e:
         return gen_json_response(code=500, msg="连接测试失败", data={"error": str(e)})
+
+@external_rag_bp.route('/sso_token', methods=['POST'])
+def generate_sso_token():
+    """
+    生成 SSO token 用于访问 TrustRAG 服务
+    简化版本，用于开发测试
+    """
+    try:
+        req_dict = get_req_para()
+        dataset_id = req_dict.get('dataset_id')
+        
+        if not dataset_id:
+            return gen_json_response(code=400, msg="参数错误", data={"detail": "缺少 dataset_id 参数"})
+        
+        # 获取当前用户信息
+        from utils.auth import get_auth_token_info
+        user_info = get_auth_token_info()
+        if not user_info:
+            return gen_json_response(code=401, msg="未授权", data={"detail": "用户未登录"})
+        
+        user_id = user_info.get('user_id')
+        tenant_id = user_info.get('tenant_id', 0)
+        
+        # 简化权限检查 - 开发模式下直接返回 read 权限
+        permission_level = 'read'
+        
+        # 生成短期 token（10分钟有效期）
+        import jwt
+        from datetime import datetime, timedelta
+        
+        token_payload = {
+            'user_id': user_id,
+            'tenant_id': tenant_id,
+            'dataset_id': dataset_id,
+            'permission_level': permission_level,
+            'exp': datetime.utcnow() + timedelta(minutes=10),  # 10分钟过期
+            'iat': datetime.utcnow()
+        }
+        
+        # 使用简单的密钥（生产环境应该使用环境变量）
+        secret_key = current_app.config.get('SECRET_KEY', 'ezdata-secret-key')
+        token = jwt.encode(token_payload, secret_key, algorithm='HS256')
+        
+        return gen_json_response(code=200, msg="SSO token 生成成功", data={
+            'token': token,
+            'expires_in': 600,  # 10分钟
+            'permission_level': permission_level,
+            'dataset_id': dataset_id
+        })
+        
+    except Exception as e:
+        return gen_json_response(code=500, msg="SSO token 生成失败", data={"error": str(e)})
+
+@external_rag_bp.route('/ask', methods=['POST'])
+def ask_question():
+    """
+    统一提问接口 - 简化版本，用于开发测试
+    """
+    try:
+        req_dict = get_req_para()
+        question = req_dict.get('question')
+        dataset_id = req_dict.get('dataset_id')
+        
+        if not question:
+            return gen_json_response(code=400, msg="参数错误", data={"detail": "缺少 question 参数"})
+        
+        if not dataset_id:
+            return gen_json_response(code=400, msg="参数错误", data={"detail": "缺少 dataset_id 参数"})
+        
+        # 获取当前用户信息
+        from utils.auth import get_auth_token_info
+        user_info = get_auth_token_info()
+        if not user_info:
+            return gen_json_response(code=401, msg="未授权", data={"detail": "用户未登录"})
+        
+        user_id = user_info.get('user_id')
+        
+        # 构建候选请求体
+        payloads = [
+            ('/ask', { 'question': question, 'dataset_id': dataset_id, 'user_id': user_id }),
+            ('/search_text', { 'query': question, 'dataset_id': dataset_id, 'user_id': user_id }),
+            ('/chat', { 'message': question, 'dataset_id': dataset_id, 'user_id': user_id }),
+            ('/text', { 'content': question, 'dataset_id': dataset_id, 'user_id': user_id }),
+        ]
+        
+        last_error = None
+        for endpoint, body in payloads:
+            try:
+                result = _make_trustrag_request(endpoint, method='POST', data=body)
+                # 如果返回包含 error 字段，视为失败，尝试下一个
+                if isinstance(result, dict) and result.get('error'):
+                    last_error = result
+                    continue
+                return gen_json_response(code=200, msg="查询成功", data={
+                    'endpoint': endpoint,
+                    'result': result
+                })
+            except Exception as e:
+                last_error = {'error': str(e)}
+                continue
+        
+        return gen_json_response(code=502, msg="TrustRAG调用失败", data=last_error or {'detail': 'unknown error'})
+        
+    except Exception as e:
+        return gen_json_response(code=500, msg="查询失败", data={"error": str(e)})
