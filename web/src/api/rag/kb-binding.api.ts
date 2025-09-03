@@ -1,9 +1,9 @@
 import { defHttp } from '@/utils/http/axios';
 
 enum Api {
-  GetBinding = '/api/rag/kb/binding',
-  CreateOrUpdateBinding = '/api/rag/kb/binding',
-  DeleteBinding = '/api/rag/kb/binding',
+  GetBinding = '/api/rag/kb/binding/binding',
+  CreateOrUpdateBinding = '/api/rag/kb/binding/binding',
+  DeleteBinding = '/api/rag/kb/binding/binding',
 }
 
 /**

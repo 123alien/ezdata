@@ -118,6 +118,6 @@ BLUEPRINT_DICT = {
     },
     'kb_binding': {
         'blueprint': 'web_apps.rag.views.kb_binding_views.kb_binding_bp',
-        'url_prefix': '/api/rag/kb'
+        'url_prefix': '/api/rag/kb/binding'
     },
 }
