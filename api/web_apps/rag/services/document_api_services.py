@@ -221,6 +221,15 @@ class DocumentApiService(object):
         from web_apps.rag.services.rag_service import train_document
         try:
             train_document(obj.id, metadata={'user_name': user_info['username']})
+            # 实时同步到 TrustRAG（我的知识库优先：dataset_id 即 KB id）
+            try:
+                from utils.common_utils import parse_json
+                from web_apps.rag.services.trustrag_sync_service import sync_created_document
+                meta = parse_json(obj.meta_data)
+                _ = sync_created_document(dataset_id=obj.dataset_id, meta_data=meta)
+            except Exception as se:
+                # 同步失败不影响主流程，仅记录日志
+                print(f"[TrustRAG Sync] skip or failed: {se}")
             return gen_json_response(msg='添加成功', extends={'success': True})
         except Exception as e:
             return gen_json_response(code=500, msg=f'添加成功但训练任务启动失败: {str(e)}', extends={'success': True})
