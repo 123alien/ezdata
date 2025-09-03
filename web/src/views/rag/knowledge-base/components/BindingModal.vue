@@ -1,6 +1,6 @@
 <template>
   <a-modal
-    v-model:open="open"
+    :open="open"
     :title="title"
     :width="600"
     @ok="handleOk"
