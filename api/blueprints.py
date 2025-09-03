@@ -116,4 +116,8 @@ BLUEPRINT_DICT = {
         'blueprint': 'web_apps.rag.views.kb_views.kb_bp',
         'url_prefix': '/api/rag/kb'
     },
+    'kb_binding': {
+        'blueprint': 'web_apps.rag.views.kb_binding_views.kb_binding_bp',
+        'url_prefix': '/api/rag/kb'
+    },
 }

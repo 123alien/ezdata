@@ -259,14 +259,15 @@ def test_connection():
 def generate_sso_token():
     """
     生成 SSO token 用于访问 TrustRAG 服务
-    简化版本，用于开发测试
+    自动使用绑定的namespace（如果存在）
     """
     try:
         req_dict = get_req_para()
         dataset_id = req_dict.get('dataset_id')
+        namespace = req_dict.get('namespace')
         
-        if not dataset_id:
-            return gen_json_response(code=400, msg="参数错误", data={"detail": "缺少 dataset_id 参数"})
+        if not dataset_id and not namespace:
+            return gen_json_response(code=400, msg="参数错误", data={"detail": "缺少 dataset_id 或 namespace"})
         
         # 获取当前用户信息
         from utils.auth import get_auth_token_info
@@ -277,7 +278,35 @@ def generate_sso_token():
         user_id = user_info.get('user_id')
         tenant_id = user_info.get('tenant_id', 0)
         
-        # 简化权限检查 - 开发模式下直接返回 read 权限
+        # 如果没有提供namespace，尝试从绑定表获取
+        if not namespace and dataset_id:
+            try:
+                from web_apps.rag.kb_models import KnowledgeBaseBinding
+                from web_apps import db
+                
+                binding = db.session.query(KnowledgeBaseBinding).filter(
+                    KnowledgeBaseBinding.kb_id == dataset_id,
+                    KnowledgeBaseBinding.del_flag == 0
+                ).first()
+                
+                if binding:
+                    namespace = binding.namespace
+                    current_app.logger.info(f"自动使用绑定的namespace: {namespace} for kb_id: {dataset_id}")
+                else:
+                    return gen_json_response(code=400, msg="绑定信息不存在", data={
+                        "detail": f"知识库 {dataset_id} 未绑定TrustRAG namespace，请先创建绑定"
+                    })
+            except Exception as e:
+                current_app.logger.error(f"查询绑定信息失败: {str(e)}")
+                return gen_json_response(code=500, msg="查询绑定信息失败", data={"error": str(e)})
+        
+        # 权限检查
+        from web_apps.rag.services.kb_service import KnowledgeBaseService
+        kb_service = KnowledgeBaseService()
+        
+        if dataset_id and not kb_service.has_permission(dataset_id, user_id, 'read'):
+            return gen_json_response(code=403, msg="权限不足", data={"detail": "无权限访问此知识库"})
+        
         permission_level = 'read'
         
         # 生成短期 token（10分钟有效期）
@@ -288,6 +317,7 @@ def generate_sso_token():
             'user_id': user_id,
             'tenant_id': tenant_id,
             'dataset_id': dataset_id,
+            'namespace': namespace,
             'permission_level': permission_level,
             'exp': datetime.utcnow() + timedelta(minutes=10),  # 10分钟过期
             'iat': datetime.utcnow()
@@ -301,7 +331,8 @@ def generate_sso_token():
             'token': token,
             'expires_in': 600,  # 10分钟
             'permission_level': permission_level,
-            'dataset_id': dataset_id
+            'dataset_id': dataset_id,
+            'namespace': namespace,
         })
         
     except Exception as e:
@@ -310,18 +341,19 @@ def generate_sso_token():
 @external_rag_bp.route('/ask', methods=['POST'])
 def ask_question():
     """
-    统一提问接口 - 简化版本，用于开发测试
+    统一提问接口 - 自动使用绑定的namespace（如果存在）
     """
     try:
         req_dict = get_req_para()
         question = req_dict.get('question')
         dataset_id = req_dict.get('dataset_id')
+        namespace = req_dict.get('namespace')
         
         if not question:
             return gen_json_response(code=400, msg="参数错误", data={"detail": "缺少 question 参数"})
         
-        if not dataset_id:
-            return gen_json_response(code=400, msg="参数错误", data={"detail": "缺少 dataset_id 参数"})
+        if not dataset_id and not namespace:
+            return gen_json_response(code=400, msg="参数错误", data={"detail": "缺少 dataset_id 或 namespace"})
         
         # 获取当前用户信息
         from utils.auth import get_auth_token_info
@@ -331,19 +363,47 @@ def ask_question():
         
         user_id = user_info.get('user_id')
         
-        # 构建候选请求体
+        # 如果没有提供namespace，尝试从绑定表获取
+        if not namespace and dataset_id:
+            try:
+                from web_apps.rag.kb_models import KnowledgeBaseBinding
+                from web_apps import db
+                
+                binding = db.session.query(KnowledgeBaseBinding).filter(
+                    KnowledgeBaseBinding.kb_id == dataset_id,
+                    KnowledgeBaseBinding.del_flag == 0
+                ).first()
+                
+                if binding:
+                    namespace = binding.namespace
+                    current_app.logger.info(f"自动使用绑定的namespace: {namespace} for kb_id: {dataset_id}")
+                else:
+                    return gen_json_response(code=400, msg="绑定信息不存在", data={
+                        "detail": f"知识库 {dataset_id} 未绑定TrustRAG namespace，请先创建绑定"
+                    })
+            except Exception as e:
+                current_app.logger.error(f"查询绑定信息失败: {str(e)}")
+                return gen_json_response(code=500, msg="查询绑定信息失败", data={"error": str(e)})
+        
+        # 权限检查
+        from web_apps.rag.services.kb_service import KnowledgeBaseService
+        kb_service = KnowledgeBaseService()
+        
+        if dataset_id and not kb_service.has_permission(dataset_id, user_id, 'read'):
+            return gen_json_response(code=403, msg="权限不足", data={"detail": "无权限访问此知识库"})
+        
+        # 构建候选请求体（若提供 namespace 则一并传递）
         payloads = [
-            ('/ask', { 'question': question, 'dataset_id': dataset_id, 'user_id': user_id }),
-            ('/search_text', { 'query': question, 'dataset_id': dataset_id, 'user_id': user_id }),
-            ('/chat', { 'message': question, 'dataset_id': dataset_id, 'user_id': user_id }),
-            ('/text', { 'content': question, 'dataset_id': dataset_id, 'user_id': user_id }),
+            ('/ask', { 'question': question, 'dataset_id': dataset_id, 'namespace': namespace, 'user_id': user_id }),
+            ('/search_text', { 'query': question, 'dataset_id': dataset_id, 'namespace': namespace, 'user_id': user_id }),
+            ('/chat', { 'message': question, 'dataset_id': dataset_id, 'namespace': namespace, 'user_id': user_id }),
+            ('/text', { 'content': question, 'dataset_id': dataset_id, 'namespace': namespace, 'user_id': user_id }),
         ]
         
         last_error = None
         for endpoint, body in payloads:
             try:
                 result = _make_trustrag_request(endpoint, method='POST', data=body)
-                # 如果返回包含 error 字段，视为失败，尝试下一个
                 if isinstance(result, dict) and result.get('error'):
                     last_error = result
                     continue

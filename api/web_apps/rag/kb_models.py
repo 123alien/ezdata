@@ -1,6 +1,7 @@
 from web_apps import db
 from models import BaseModel
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import UniqueConstraint, Column, Integer, String
+from sqlalchemy.orm import relationship
 
 class UserKnowledgeBase(BaseModel):
     __tablename__ = 'rag_knowledge_base'
@@ -12,6 +13,13 @@ class UserKnowledgeBase(BaseModel):
     __table_args__ = (
         UniqueConstraint('name', 'owner_id', name='uq_kb_name_owner'),
     )
+    
+    # 关联文档
+    documents = db.relationship("KnowledgeBaseDocument", backref="knowledge_base", lazy="dynamic")
+    # 关联分享权限
+    shares = db.relationship("KnowledgeBaseShare", backref="knowledge_base", lazy="dynamic")
+    # 关联TrustRAG绑定
+    binding = db.relationship("KnowledgeBaseBinding", backref="knowledge_base", uselist=False)
 
 class KnowledgeBaseDocument(BaseModel):
     __tablename__ = 'rag_kb_document'
@@ -32,4 +40,15 @@ class KnowledgeBaseShare(BaseModel):
 
     __table_args__ = (
         UniqueConstraint('kb_id', 'shared_with_id', name='uq_kb_share'),
+    )
+
+class KnowledgeBaseBinding(BaseModel):
+    """知识库与TrustRAG namespace绑定表"""
+    __tablename__ = 'rag_kb_binding'
+    kb_id = db.Column(db.Integer, db.ForeignKey('rag_knowledge_base.id'), nullable=False, comment='知识库ID')
+    namespace = db.Column(db.String(255), nullable=False, comment='TrustRAG namespace')
+    remark = db.Column(db.String(500), comment='备注说明')
+    
+    __table_args__ = (
+        UniqueConstraint('kb_id', name='uq_kb_binding'),
     )

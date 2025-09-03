@@ -17,28 +17,30 @@ enum Api {
 
 /**
  * 生成 SSO Token 用于访问 TrustRAG 服务
- * @param dataset_id 知识库ID
+ * @param dataset_id 知识库ID（可选）
+ * @param namespace TrustRAG 命名空间（可选）
  */
-export function generateSSOToken(dataset_id: string) {
+export function generateSSOToken(dataset_id?: string, namespace?: string) {
   return defHttp.post(
     {
       url: Api.GenerateSSOToken,
-      data: { dataset_id },
+      data: { dataset_id, namespace },
     },
     { joinPrefix: false }
   );
 }
 
 /**
- * 向指定知识库提问
+ * 向指定知识库或 namespace 提问
  * @param question 问题
- * @param dataset_id 知识库ID
+ * @param dataset_id 知识库ID（可选）
+ * @param namespace TrustRAG 命名空间（可选）
  */
-export function askQuestion(question: string, dataset_id: string) {
+export function askQuestion(question: string, dataset_id?: string, namespace?: string) {
   return defHttp.post(
     {
       url: Api.AskQuestion,
-      data: { question, dataset_id },
+      data: { question, dataset_id, namespace },
     },
     { joinPrefix: false }
   );

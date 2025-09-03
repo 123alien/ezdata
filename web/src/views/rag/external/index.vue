@@ -22,25 +22,15 @@
               </a-select>
             </a-col>
             <a-col :span="8">
-              <a-select
-                v-model:value="selectedDatasetId"
-                placeholder="请选择共享知识库"
-                style="width: 100%"
-                @change="onDatasetChange"
-              >
-                <a-select-option
-                  v-for="kb in sharedKnowledgeBases"
-                  :key="kb.kb_id"
-                  :value="kb.kb_id"
-                >
-                  {{ kb.kb_name }} (共享自: {{ kb.shared_by_name }})
-                </a-select-option>
-              </a-select>
+              <a-input
+                v-model:value="namespace"
+                placeholder="可选：TrustRAG namespace（不绑定时可直接填写）"
+              />
             </a-col>
             <a-col :span="8">
               <a-button
                 type="primary"
-                :disabled="!selectedDatasetId"
+                :disabled="!selectedDatasetId && !namespace"
                 @click="generateToken"
               >
                 生成访问令牌
@@ -162,9 +152,11 @@ import {
 } from '/@/api/rag/external.api';
 import { getDatasets as getMyDatasets } from '/@/api/rag/knowledge-base.api';
 import { getSharedWithMe } from '/@/api/rag/knowledge-base.api';
+import { getKnowledgeBaseBinding } from '/@/api/rag/kb-binding.api';
 
 // 响应式数据
 const selectedDatasetId = ref<string>('');
+const namespace = ref<string>('');
 const ssoToken = ref<string>('');
 const permissionLevel = ref<string>('');
 const tokenExpiryTime = ref<string>('');
@@ -206,33 +198,52 @@ const loadKnowledgeBases = async () => {
 
 // 代理后的 UI 地址生成
 const buildTrustragUiUrl = () => {
-  if (!selectedDatasetId.value || !ssoToken.value) return '';
-  const qs = new URLSearchParams({ token: ssoToken.value, dataset_id: selectedDatasetId.value }).toString();
-  return `/trustrag-ui/?${qs}`;
+  if (!selectedDatasetId.value && !namespace.value) return '';
+  if (!ssoToken.value) return '';
+  const qs = new URLSearchParams({ token: ssoToken.value });
+  if (selectedDatasetId.value) qs.set('dataset_id', selectedDatasetId.value);
+  if (namespace.value) qs.set('namespace', namespace.value);
+  return `/trustrag-ui/?${qs.toString()}`;
 };
 
-const onDatasetChange = (value: string) => {
+const onDatasetChange = async (value: string) => {
   selectedDatasetId.value = value;
   // 清除之前的 token
   ssoToken.value = '';
   permissionLevel.value = '';
   tokenExpiryTime.value = '';
   quickAnswer.value = '';
+  
+  // 如果选择了知识库，尝试自动获取绑定的namespace
+  if (value) {
+    try {
+      const res = await getKnowledgeBaseBinding({ kid: value });
+      if (res.success && res.result) {
+        namespace.value = res.result.namespace;
+        message.info(`已自动填入绑定的namespace: ${res.result.namespace}`);
+      } else {
+        // 没有绑定信息，清空namespace
+        namespace.value = '';
+      }
+    } catch (error) {
+      console.error('获取绑定信息失败:', error);
+      namespace.value = '';
+    }
+  }
 };
 
 const generateToken = async () => {
-  if (!selectedDatasetId.value) {
-    message.warning('请先选择知识库');
+  if (!selectedDatasetId.value && !namespace.value) {
+    message.warning('请先选择知识库或填写 namespace');
     return;
   }
 
   try {
-    const result = await generateSSOToken(selectedDatasetId.value);
+    const result = await generateSSOToken(selectedDatasetId.value || undefined, namespace.value || undefined);
     if (result.code === 200) {
       ssoToken.value = result.data.token;
       permissionLevel.value = result.data.permission_level;
       
-      // 计算过期时间
       const expiryDate = new Date(Date.now() + result.data.expires_in * 1000);
       tokenExpiryTime.value = expiryDate.toLocaleString('zh-CN');
       
@@ -242,7 +253,6 @@ const generateToken = async () => {
     }
   } catch (error) {
     console.error('生成令牌失败:', error);
-    // 模拟成功响应用于测试
     ssoToken.value = 'mock-token-' + Date.now();
     permissionLevel.value = 'read';
     tokenExpiryTime.value = new Date(Date.now() + 600000).toLocaleString('zh-CN');
@@ -256,19 +266,20 @@ const askQuickQuestion = async () => {
     return;
   }
 
-  if (!selectedDatasetId.value) {
-    message.warning('请先选择知识库');
+  if (!selectedDatasetId.value && !namespace.value) {
+    message.warning('请先选择知识库或填写 namespace');
     return;
   }
 
-  // 优先：直接调用 TrustRAG（通过 Vite 代理避免跨域），成功则返回
+  // 优先直连 TrustRAG
   try {
     const response = await fetch('/trustrag/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: quickQuestion.value,
-        dataset_id: selectedDatasetId.value,
+        dataset_id: selectedDatasetId.value || undefined,
+        namespace: namespace.value || undefined,
       }),
     });
     if (response.ok) {
@@ -277,13 +288,11 @@ const askQuickQuestion = async () => {
       message.success('提问成功（直连 TrustRAG）');
       return;
     }
-  } catch (e) {
-    // 直连失败则降级到后端
-  }
+  } catch {}
 
-  // 降级：走后端统一 /ask（带用户权限校验）
+  // 降级走后端
   try {
-    const result = await askQuestion(quickQuestion.value, selectedDatasetId.value);
+    const result = await askQuestion(quickQuestion.value, selectedDatasetId.value || undefined, namespace.value || undefined);
     if (result.code === 200) {
       quickAnswer.value = JSON.stringify(result.data, null, 2);
       message.success('提问成功（后端代理）');

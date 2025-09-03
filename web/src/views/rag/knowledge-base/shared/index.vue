@@ -21,6 +21,7 @@
         <template v-else-if="column.key === 'action'">
           <a-space>
             <a @click="viewKnowledgeBase(record)">查看</a>
+            <a @click="showBindingModal(record)" v-if="record.permission_level !== 'read'">绑定索引</a>
             <a @click="downloadDocuments(record)" v-if="record.permission_level !== 'read'">
               下载文档
             </a>
@@ -49,6 +50,13 @@
       </a-table>
     </a-modal>
 
+    <!-- 绑定管理弹窗 -->
+    <BindingModal
+      v-model:open="bindingModalVisible"
+      :kb-data="currentBindingKb"
+      @success="handleBindingSuccess"
+    />
+
     <!-- 文档详情弹窗（简单JSON预览） -->
     <a-modal
       v-model:open="docDetailVisible"
@@ -67,6 +75,7 @@
 import { ref, onMounted } from 'vue';
 import { message } from 'ant-design-vue';
 import { getSharedWithMe, getDocuments, getDocumentDetail } from '/@/api/rag/knowledge-base.api';
+import BindingModal from '../components/BindingModal.vue';
 
 const loading = ref(false);
 const sharedList = ref([]);
@@ -75,6 +84,10 @@ const documentModalVisible = ref(false);
 const documentLoading = ref(false);
 const documentList = ref<any[]>([]);
 const currentKb = ref<any>(null);
+
+// 绑定管理相关
+const bindingModalVisible = ref(false);
+const currentBindingKb = ref<any>(null);
 
 const columns = [
   { title: '知识库名称', dataIndex: 'kb_name', key: 'kb_name' },
@@ -172,6 +185,21 @@ const getPermissionText = (level: string) => {
     'admin': '管理员'
   };
   return texts[level] || level;
+};
+
+// 显示绑定弹窗
+const showBindingModal = (record: any) => {
+  currentBindingKb.value = {
+    id: record.kb_id,
+    name: record.kb_name,
+  };
+  bindingModalVisible.value = true;
+};
+
+// 绑定成功回调
+const handleBindingSuccess = () => {
+  message.success('绑定操作成功');
+  // 可以在这里刷新共享列表或做其他操作
 };
 </script>
 

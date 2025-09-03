@@ -30,6 +30,7 @@
             <a @click="viewDataset(record)">查看</a>
             <a @click="editDataset(record)">编辑</a>
             <a @click="manageDocuments(record)">文档管理</a>
+            <a @click="showBindingModal(record)">绑定索引</a>
             <a @click="deleteDataset(record)" class="text-danger">删除</a>
           </a-space>
         </template>
@@ -70,6 +71,13 @@
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <!-- 绑定管理弹窗 -->
+    <BindingModal
+      v-model:open="bindingModalVisible"
+      :kb-data="currentBindingKb"
+      @success="handleBindingSuccess"
+    />
 
     <!-- 文档管理弹窗 -->
     <a-modal
@@ -138,6 +146,7 @@ import {
   deleteDocument as deleteDocumentApi,
   trustRAGVectorize,
 } from '/@/api/rag/knowledge-base.api';
+import BindingModal from '../components/BindingModal.vue';
 
 // 响应式数据
 const loading = ref(false);
@@ -152,6 +161,10 @@ const documentModalVisible = ref(false);
 const documentLoading = ref(false);
 const documentList = ref<any[]>([]);
 const currentDataset = ref<any>(null);
+
+// 绑定管理相关
+const bindingModalVisible = ref(false);
+const currentBindingKb = ref<any>(null);
 
 // 表单数据
 const formData = reactive({
@@ -188,7 +201,7 @@ const columns = [
   { title: '描述', dataIndex: 'description', key: 'description', ellipsis: true },
   { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
   { title: '创建时间', dataIndex: 'create_time', key: 'create_time', width: 180 },
-  { title: '操作', key: 'action', width: 250, fixed: 'right' },
+  { title: '操作', key: 'action', width: 300, fixed: 'right' },
 ];
 
 // 文档表格列定义
@@ -447,6 +460,21 @@ const getDocumentStatusText = (status: number) => {
     4: '处理失败',
   };
   return texts[status] || '未知';
+};
+
+// 显示绑定弹窗
+const showBindingModal = (record: any) => {
+  currentBindingKb.value = {
+    id: record.id,
+    name: record.name,
+  };
+  bindingModalVisible.value = true;
+};
+
+// 绑定成功回调
+const handleBindingSuccess = () => {
+  message.success('绑定操作成功');
+  // 可以在这里刷新知识库列表或做其他操作
 };
 </script>
 
