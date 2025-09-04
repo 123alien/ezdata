@@ -4,7 +4,10 @@ from utils.common_utils import gen_uuid
 from sqlalchemy import and_, or_
 from typing import List, Dict, Optional
 import json
+import logging
 from models import User
+
+logger = logging.getLogger(__name__)
 
 class KnowledgeBaseService:
     
@@ -230,7 +233,7 @@ class KnowledgeBaseService:
                 logger.info(f"整数ID查询结果: {kb is not None}")
             
             # 2. 如果没找到，尝试作为 UUID 查询（旧流程）
-            if not kb and len(kb_id) == 36:  # UUID 长度
+            if not kb and len(kb_id) >= 32:  # UUID 长度（可能是32或36位）
                 logger.info(f"尝试作为UUID查询: {kb_id}")
                 from web_apps.rag.db_models import Dataset
                 # 通过 Dataset UUID 找到对应的 UserKnowledgeBase
@@ -271,6 +274,7 @@ class KnowledgeBaseService:
                         logger.info(f"自动创建UserKnowledgeBase成功: {kb.id} for Dataset {dataset.id}")
             
             if not kb:
+                logger.error(f"未找到知识库: kb_id={kb_id}, shared_by_id={shared_by_id}")
                 return {
                     'code': 404,
                     'data': None,
@@ -310,6 +314,7 @@ class KnowledgeBaseService:
             }
         except Exception as e:
             db.session.rollback()
+            logger.error(f"分享知识库异常: {str(e)}", exc_info=True)
             return {
                 'code': 500,
                 'data': None,
