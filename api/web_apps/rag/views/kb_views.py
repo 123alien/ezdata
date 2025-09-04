@@ -165,7 +165,7 @@ def share_knowledge_base():
             kb_id=kb_id,
             shared_with_id=shared_with_id,
             permission_level=permission_level,
-            shared_by_id=current_user.get('id')
+            shared_by_id=current_user.get('userId')
         )
         
         return jsonify(result)
@@ -186,7 +186,7 @@ def get_share_list():
 
         page = int(request.args.get('page', 1))
         size = int(request.args.get('size', 10))
-        result = KnowledgeBaseService.get_share_list(shared_by_id=current_user.get('id'), page=page, size=size)
+        result = KnowledgeBaseService.get_share_list(shared_by_id=current_user.get('userId'), page=page, size=size)
         return jsonify(result)
     except Exception as e:
         return jsonify({'code': 500, 'data': None, 'msg': f'获取分享列表失败: {str(e)}'})
@@ -203,7 +203,7 @@ def update_share_permission():
         permission_level = params.get('permission_level')
         if not share_id or not permission_level:
             return jsonify({'code': 400, 'data': None, 'msg': '参数不完整'})
-        result = KnowledgeBaseService.update_share_permission(share_id=share_id, permission_level=permission_level, shared_by_id=current_user.get('id'))
+        result = KnowledgeBaseService.update_share_permission(share_id=share_id, permission_level=permission_level, shared_by_id=current_user.get('userId'))
         return jsonify(result)
     except Exception as e:
         return jsonify({'code': 500, 'data': None, 'msg': f'更新分享失败: {str(e)}'})
@@ -219,7 +219,7 @@ def revoke_share():
         share_id = params.get('share_id')
         if not share_id:
             return jsonify({'code': 400, 'data': None, 'msg': '参数不完整'})
-        result = KnowledgeBaseService.revoke_share(share_id=share_id, shared_by_id=current_user.get('id'))
+        result = KnowledgeBaseService.revoke_share(share_id=share_id, shared_by_id=current_user.get('userId'))
         return jsonify(result)
     except Exception as e:
         return jsonify({'code': 500, 'data': None, 'msg': f'撤销分享失败: {str(e)}'})
@@ -233,7 +233,7 @@ def get_shared_with_me():
             return jsonify({'code': 401, 'data': None, 'msg': '用户未登录'})
         page = int(request.args.get('page', 1))
         size = int(request.args.get('size', 10))
-        result = KnowledgeBaseService.get_shared_with_me(user_id=current_user.get('id'), page=page, size=size)
+        result = KnowledgeBaseService.get_shared_with_me(user_id=current_user.get('userId'), page=page, size=size)
         return jsonify(result)
     except Exception as e:
         return jsonify({'code': 500, 'data': None, 'msg': f'获取失败: {str(e)}'})
