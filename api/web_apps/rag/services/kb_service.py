@@ -212,11 +212,14 @@ class KnowledgeBaseService:
                            shared_by_id: str) -> Dict:
         """分享知识库 - 兼容 UUID（旧Dataset）和整数ID（新UserKnowledgeBase）"""
         try:
+            logger.info(f"分享知识库请求: kb_id={kb_id}, shared_by_id={shared_by_id}, shared_with_id={shared_with_id}")
+            
             # 兼容性处理：支持 UUID 和整数 ID
             kb = None
             
             # 1. 先尝试作为整数 ID 查询（新流程）
             if kb_id.isdigit():
+                logger.info(f"尝试作为整数ID查询: {kb_id}")
                 kb = db.session.query(UserKnowledgeBase).filter(
                     and_(
                         UserKnowledgeBase.id == int(kb_id),
@@ -224,9 +227,11 @@ class KnowledgeBaseService:
                         UserKnowledgeBase.del_flag == 0
                     )
                 ).first()
+                logger.info(f"整数ID查询结果: {kb is not None}")
             
             # 2. 如果没找到，尝试作为 UUID 查询（旧流程）
             if not kb and len(kb_id) == 36:  # UUID 长度
+                logger.info(f"尝试作为UUID查询: {kb_id}")
                 from web_apps.rag.db_models import Dataset
                 # 通过 Dataset UUID 找到对应的 UserKnowledgeBase
                 dataset = db.session.query(Dataset).filter(
@@ -236,8 +241,10 @@ class KnowledgeBaseService:
                         Dataset.del_flag == 0
                     )
                 ).first()
+                logger.info(f"Dataset查询结果: {dataset is not None}")
                 
                 if dataset:
+                    logger.info(f"Dataset信息: name={dataset.name}, create_by={dataset.create_by}")
                     # 查找是否有对应的 UserKnowledgeBase（通过名称匹配）
                     kb = db.session.query(UserKnowledgeBase).filter(
                         and_(
@@ -246,19 +253,22 @@ class KnowledgeBaseService:
                             UserKnowledgeBase.del_flag == 0
                         )
                     ).first()
+                    logger.info(f"UserKnowledgeBase查询结果: {kb is not None}")
                     
                     # 如果没找到，自动创建一个对应的 UserKnowledgeBase
                     if not kb:
+                        logger.info(f"自动创建UserKnowledgeBase for Dataset {dataset.id}")
                         kb = UserKnowledgeBase(
                             name=dataset.name,
                             description=dataset.name,  # 使用名称作为描述
-                            owner_id=shared_by_id,
+                            owner_id=shared_by_id,  # 使用当前用户ID作为owner
                             is_public=0,
                             status=1
                         )
                         db.session.add(kb)
                         db.session.commit()
                         db.session.flush()
+                        logger.info(f"自动创建UserKnowledgeBase成功: {kb.id} for Dataset {dataset.id}")
             
             if not kb:
                 return {
