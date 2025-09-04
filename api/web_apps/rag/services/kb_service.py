@@ -282,18 +282,20 @@ class KnowledgeBaseService:
                 }
             
             # 检查是否已经分享过（使用找到的 kb.id）
+            # 注意：不检查del_flag，因为需要处理已删除的记录
             existing_share = db.session.query(KnowledgeBaseShare).filter(
                 and_(
                     KnowledgeBaseShare.kb_id == kb.id,
-                    KnowledgeBaseShare.shared_with_id == shared_with_id,
-                    KnowledgeBaseShare.del_flag == 0
+                    KnowledgeBaseShare.shared_with_id == shared_with_id
                 )
             ).first()
             
             if existing_share:
                 # 更新现有分享
+                logger.info(f"更新现有分享记录: ID={existing_share.id}, del_flag={existing_share.del_flag} -> 0, status={existing_share.status} -> 1")
                 existing_share.permission_level = permission_level
                 existing_share.status = 1
+                existing_share.del_flag = 0  # 恢复删除标记
             else:
                 # 创建新分享（使用找到的 kb.id）
                 share = KnowledgeBaseShare(
