@@ -246,6 +246,19 @@ class KnowledgeBaseService:
                             UserKnowledgeBase.del_flag == 0
                         )
                     ).first()
+                    
+                    # 如果没找到，自动创建一个对应的 UserKnowledgeBase
+                    if not kb:
+                        kb = UserKnowledgeBase(
+                            name=dataset.name,
+                            description=dataset.name,  # 使用名称作为描述
+                            owner_id=shared_by_id,
+                            is_public=0,
+                            status=1
+                        )
+                        db.session.add(kb)
+                        db.session.commit()
+                        db.session.flush()
             
             if not kb:
                 return {
