@@ -25,8 +25,8 @@ class DataChatTool(BaseTool):
     description: str = (
         "数据分析"
     )
-    return_direct = True
-    is_chat = True
+    return_direct: bool = True
+    is_chat: bool = True
     datamodel_id: str = ''
     knowledge: str = ''
     reader: Optional[object] = None
