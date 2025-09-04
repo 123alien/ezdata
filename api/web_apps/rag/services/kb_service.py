@@ -210,16 +210,42 @@ class KnowledgeBaseService:
     @staticmethod
     def share_knowledge_base(kb_id: str, shared_with_id: str, permission_level: str, 
                            shared_by_id: str) -> Dict:
-        """分享知识库"""
+        """分享知识库 - 兼容 UUID（旧Dataset）和整数ID（新UserKnowledgeBase）"""
         try:
-            # 检查知识库是否存在且用户有权限
-            kb = db.session.query(UserKnowledgeBase).filter(
-                and_(
-                    UserKnowledgeBase.id == kb_id,
-                    UserKnowledgeBase.owner_id == shared_by_id,
-                    UserKnowledgeBase.del_flag == 0
-                )
-            ).first()
+            # 兼容性处理：支持 UUID 和整数 ID
+            kb = None
+            
+            # 1. 先尝试作为整数 ID 查询（新流程）
+            if kb_id.isdigit():
+                kb = db.session.query(UserKnowledgeBase).filter(
+                    and_(
+                        UserKnowledgeBase.id == int(kb_id),
+                        UserKnowledgeBase.owner_id == shared_by_id,
+                        UserKnowledgeBase.del_flag == 0
+                    )
+                ).first()
+            
+            # 2. 如果没找到，尝试作为 UUID 查询（旧流程）
+            if not kb and len(kb_id) == 36:  # UUID 长度
+                from web_apps.rag.db_models import Dataset
+                # 通过 Dataset UUID 找到对应的 UserKnowledgeBase
+                dataset = db.session.query(Dataset).filter(
+                    and_(
+                        Dataset.id == kb_id,
+                        Dataset.create_by == shared_by_id,
+                        Dataset.del_flag == 0
+                    )
+                ).first()
+                
+                if dataset:
+                    # 查找是否有对应的 UserKnowledgeBase（通过名称匹配）
+                    kb = db.session.query(UserKnowledgeBase).filter(
+                        and_(
+                            UserKnowledgeBase.name == dataset.name,
+                            UserKnowledgeBase.owner_id == shared_by_id,
+                            UserKnowledgeBase.del_flag == 0
+                        )
+                    ).first()
             
             if not kb:
                 return {
@@ -228,10 +254,10 @@ class KnowledgeBaseService:
                     'msg': '知识库不存在或无权限'
                 }
             
-            # 检查是否已经分享过
+            # 检查是否已经分享过（使用找到的 kb.id）
             existing_share = db.session.query(KnowledgeBaseShare).filter(
                 and_(
-                    KnowledgeBaseShare.kb_id == kb_id,
+                    KnowledgeBaseShare.kb_id == kb.id,
                     KnowledgeBaseShare.shared_with_id == shared_with_id,
                     KnowledgeBaseShare.del_flag == 0
                 )
@@ -242,9 +268,9 @@ class KnowledgeBaseService:
                 existing_share.permission_level = permission_level
                 existing_share.status = 1
             else:
-                # 创建新分享
+                # 创建新分享（使用找到的 kb.id）
                 share = KnowledgeBaseShare(
-                    kb_id=kb_id,
+                    kb_id=kb.id,
                     shared_by_id=shared_by_id,
                     shared_with_id=shared_with_id,
                     permission_level=permission_level,

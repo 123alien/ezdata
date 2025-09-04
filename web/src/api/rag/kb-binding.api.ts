@@ -11,7 +11,7 @@ enum Api {
  * @param params
  */
 export const getKnowledgeBaseBinding = (params: { kid: string | number }) =>
-  defHttp.get({ url: Api.GetBinding, params });
+  defHttp.get({ url: Api.GetBinding, params }, { joinPrefix: false, isTransformResponse: false });
 
 /**
  * 创建或更新知识库绑定
@@ -21,11 +21,11 @@ export const createOrUpdateBinding = (params: {
   kb_id: string | number;
   namespace: string;
   remark?: string;
-}) => defHttp.post({ url: Api.CreateOrUpdateBinding, params });
+}) => defHttp.post({ url: Api.CreateOrUpdateBinding, params }, { joinPrefix: false, isTransformResponse: false });
 
 /**
  * 删除知识库绑定
  * @param kb_id
  */
 export const deleteKnowledgeBaseBinding = (kb_id: string | number) =>
-  defHttp.delete({ url: `${Api.DeleteBinding}/${kb_id}` });
+  defHttp.delete({ url: `${Api.DeleteBinding}/${kb_id}` }, { joinPrefix: false, isTransformResponse: false });

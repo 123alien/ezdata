@@ -90,9 +90,11 @@
         <div class="document-header">
           <h3>{{ currentDataset?.name }} - 文档列表</h3>
           <a-upload
-            :custom-request="handleDocumentUpload"
+            :action="ossUploadAction"
+            :headers="tokenHeader"
             :show-upload-list="false"
             accept=".pdf,.doc,.docx,.txt,.md"
+            @change="handleOssUploadChange"
           >
             <a-button type="primary">
               <template #icon>
@@ -147,6 +149,9 @@ import {
   trustRAGVectorize,
 } from '/@/api/rag/knowledge-base.api';
 import BindingModal from '../components/BindingModal.vue';
+import { useGlobSetting } from '/@/hooks/setting';
+import { getToken } from '/@/utils/auth';
+import { uploadUrl as systemUploadUrl } from '/@/api/common/api';
 
 // 响应式数据
 const loading = ref(false);
@@ -161,6 +166,10 @@ const documentModalVisible = ref(false);
 const documentLoading = ref(false);
 const documentList = ref<any[]>([]);
 const currentDataset = ref<any>(null);
+// OSS 上传配置（沿用 ezdata 原生上传）
+const globSetting = useGlobSetting();
+const tokenHeader = { Authorization: 'Bearer ' + getToken() } as any;
+const ossUploadAction = ref<string>('/api/sys/oss/file/upload');
 
 // 绑定管理相关
 const bindingModalVisible = ref(false);
@@ -315,27 +324,35 @@ const fetchDocumentList = async (datasetId: string) => {
   }
 };
 
-// 文档上传处理
-const handleDocumentUpload = async (options: any) => {
+// OSS 上传完成后，按 ezdata 原生文档模型补一条 document 记录
+const handleOssUploadChange = async (info: any) => {
   if (!currentDataset.value) return;
-  
-  try {
-    const formData = new FormData();
-    formData.append('file', options.file);
-    formData.append('dataset_id', currentDataset.value.id);
-    formData.append('document_type', 'upload_file');
-    formData.append('name', options.file.name);
-    
-    const response = await uploadDocument(formData);
-    if (response && response.code === 200) {
-      message.success('文档上传成功');
-      await fetchDocumentList(currentDataset.value.id);
-    } else {
-      message.error(response?.msg || '文档上传失败');
+  if (info.file.status !== 'done') return;
+  const resp = info?.file?.response;
+  // 兼容不同返回结构，仅以状态为准
+  if (resp && (resp.success === true || resp.code === 200)) {
+    try {
+      const fileName = info.file.name;
+      const payload = {
+        dataset_id: currentDataset.value.id,
+        document_type: 'upload_file',
+        name: fileName,
+        meta_data: { upload_file: fileName },
+        chunk_strategy: { chunk_size: 1024 },
+      };
+      const res = await uploadDocument(payload);
+      if (res && res.code === 200) {
+        message.success('文档上传成功');
+        await fetchDocumentList(currentDataset.value.id);
+      } else {
+        message.error(res?.msg || '创建文档记录失败');
+      }
+    } catch (e) {
+      console.error(e);
+      message.error('创建文档记录失败');
     }
-  } catch (error) {
-    message.error('文档上传失败');
-    console.error(error);
+  } else {
+    message.error(resp?.message || '上传失败');
   }
 };
 
