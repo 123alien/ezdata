@@ -124,7 +124,7 @@ const fetchSharedList = async () => {
 const viewKnowledgeBase = async (record: any) => {
   currentKb.value = record;
   documentModalVisible.value = true;
-  await fetchDocumentList(record.kb_id);
+  await fetchDocumentList(record.dataset_id);
 };
 
 async function fetchDocumentList(datasetId: string) {

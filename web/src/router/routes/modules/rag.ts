@@ -61,6 +61,16 @@ const rag: AppRouteModule = {
             title: '共享给我的',
           },
         },
+        {
+          path: 'share/debug',
+          name: 'ShareDebug',
+          component: () => import('/@/views/rag/knowledge-base/share/debug.vue'),
+          meta: {
+            title: '分享调试',
+            icon: 'ion:bug',
+            hideMenu: false,
+          },
+        },
       ],
     },
     {

@@ -1,5 +1,4 @@
 from web_apps.rag.kb_models import UserKnowledgeBase, KnowledgeBaseDocument, KnowledgeBaseShare
-from web_apps.rag.db_models import Dataset
 from web_apps import db
 from utils.common_utils import gen_uuid
 from sqlalchemy import and_, or_
@@ -194,27 +193,14 @@ class KnowledgeBaseService:
                     'msg': '无权限删除此知识库'
                 }
             
-            # 软删除知识库
+            # 软删除
             kb.del_flag = 1
-            
-            # 同时将相关分享记录标记为失效
-            shares = db.session.query(KnowledgeBaseShare).filter(
-                and_(
-                    KnowledgeBaseShare.kb_id == kb_id,
-                    KnowledgeBaseShare.del_flag == 0
-                )
-            ).all()
-            
-            for share in shares:
-                share.status = 0  # 标记分享为失效
-                share.del_flag = 1  # 软删除分享记录
-            
             db.session.commit()
             
             return {
                 'code': 200,
                 'data': None,
-                'msg': f'知识库删除成功，同时失效了 {len(shares)} 个分享记录'
+                'msg': '知识库删除成功'
             }
         except Exception as e:
             db.session.rollback()
@@ -237,20 +223,10 @@ class KnowledgeBaseService:
             # 1. 先尝试作为整数 ID 查询（新流程）
             if kb_id.isdigit():
                 logger.info(f"尝试作为整数ID查询: {kb_id}")
-                
-                # 获取用户名：如果shared_by_id是用户ID，需要转换为用户名
-                owner_username = shared_by_id
-                if isinstance(shared_by_id, (int, str)) and str(shared_by_id).isdigit():
-                    from models import User
-                    user = db.session.query(User).filter(User.id == int(shared_by_id)).first()
-                    if user:
-                        owner_username = user.username
-                        logger.info(f"用户ID {shared_by_id} 转换为用户名: {owner_username}")
-                
                 kb = db.session.query(UserKnowledgeBase).filter(
                     and_(
                         UserKnowledgeBase.id == int(kb_id),
-                        UserKnowledgeBase.owner_id == owner_username,
+                        UserKnowledgeBase.owner_id == shared_by_id,
                         UserKnowledgeBase.del_flag == 0
                     )
                 ).first()
@@ -261,19 +237,10 @@ class KnowledgeBaseService:
                 logger.info(f"尝试作为UUID查询: {kb_id}")
                 from web_apps.rag.db_models import Dataset
                 # 通过 Dataset UUID 找到对应的 UserKnowledgeBase
-                # 获取用户名：如果shared_by_id是用户ID，需要转换为用户名
-                owner_username = shared_by_id
-                if isinstance(shared_by_id, (int, str)) and str(shared_by_id).isdigit():
-                    from models import User
-                    user = db.session.query(User).filter(User.id == int(shared_by_id)).first()
-                    if user:
-                        owner_username = user.username
-                        logger.info(f"用户ID {shared_by_id} 转换为用户名: {owner_username}")
-                
                 dataset = db.session.query(Dataset).filter(
                     and_(
                         Dataset.id == kb_id,
-                        Dataset.create_by == owner_username,
+                        Dataset.create_by == shared_by_id,
                         Dataset.del_flag == 0
                     )
                 ).first()
@@ -281,20 +248,11 @@ class KnowledgeBaseService:
                 
                 if dataset:
                     logger.info(f"Dataset信息: name={dataset.name}, create_by={dataset.create_by}")
-                    # 获取用户名：如果shared_by_id是用户ID，需要转换为用户名
-                    owner_username = shared_by_id
-                    if isinstance(shared_by_id, (int, str)) and str(shared_by_id).isdigit():
-                        from models import User
-                        user = db.session.query(User).filter(User.id == int(shared_by_id)).first()
-                        if user:
-                            owner_username = user.username
-                            logger.info(f"用户ID {shared_by_id} 转换为用户名: {owner_username}")
-                    
                     # 查找是否有对应的 UserKnowledgeBase（通过名称匹配）
                     kb = db.session.query(UserKnowledgeBase).filter(
                         and_(
                             UserKnowledgeBase.name == dataset.name,
-                            UserKnowledgeBase.owner_id == owner_username,
+                            UserKnowledgeBase.owner_id == shared_by_id,
                             UserKnowledgeBase.del_flag == 0
                         )
                     ).first()
@@ -306,7 +264,7 @@ class KnowledgeBaseService:
                         kb = UserKnowledgeBase(
                             name=dataset.name,
                             description=dataset.name,  # 使用名称作为描述
-                            owner_id=owner_username,  # 使用用户名作为owner
+                            owner_id=shared_by_id,  # 使用当前用户ID作为owner
                             is_public=0,
                             status=1
                         )
@@ -316,23 +274,13 @@ class KnowledgeBaseService:
                         logger.info(f"自动创建UserKnowledgeBase成功: {kb.id} for Dataset {dataset.id}")
             
             # 3. 如果还没找到，尝试通过Dataset ID查找（处理整数ID但UserKnowledgeBase不存在的情况）
-                        if not kb:
-                            logger.info(f"尝试通过Dataset ID查找: {kb_id}")
-                            from web_apps.rag.db_models import Dataset
-                            
-                            # 获取用户名：如果shared_by_id是用户ID，需要转换为用户名
-                            owner_username = shared_by_id
-                            if isinstance(shared_by_id, (int, str)) and str(shared_by_id).isdigit():
-                                from models import User
-                                user = db.session.query(User).filter(User.id == int(shared_by_id)).first()
-                                if user:
-                                    owner_username = user.username
-                                    logger.info(f"用户ID {shared_by_id} 转换为用户名: {owner_username}")
-                            
-                            dataset = db.session.query(Dataset).filter(
-                                and_(
-                                    Dataset.id == kb_id,
-                                    Dataset.create_by == owner_username,
+            if not kb:
+                logger.info(f"尝试通过Dataset ID查找: {kb_id}")
+                from web_apps.rag.db_models import Dataset
+                dataset = db.session.query(Dataset).filter(
+                    and_(
+                        Dataset.id == kb_id,
+                        Dataset.create_by == shared_by_id,
                         Dataset.del_flag == 0
                     )
                 ).first()
@@ -340,20 +288,11 @@ class KnowledgeBaseService:
                 
                 if dataset:
                     logger.info(f"Dataset信息: name={dataset.name}, create_by={dataset.create_by}")
-                    # 获取用户名：如果shared_by_id是用户ID，需要转换为用户名
-                    owner_username = shared_by_id
-                    if isinstance(shared_by_id, (int, str)) and str(shared_by_id).isdigit():
-                        from models import User
-                        user = db.session.query(User).filter(User.id == int(shared_by_id)).first()
-                        if user:
-                            owner_username = user.username
-                            logger.info(f"用户ID {shared_by_id} 转换为用户名: {owner_username}")
-                    
                     # 查找是否有对应的 UserKnowledgeBase（通过名称匹配）
                     kb = db.session.query(UserKnowledgeBase).filter(
                         and_(
                             UserKnowledgeBase.name == dataset.name,
-                            UserKnowledgeBase.owner_id == owner_username,
+                            UserKnowledgeBase.owner_id == shared_by_id,
                             UserKnowledgeBase.del_flag == 0
                         )
                     ).first()
@@ -365,7 +304,7 @@ class KnowledgeBaseService:
                         kb = UserKnowledgeBase(
                             name=dataset.name,
                             description=dataset.name,  # 使用名称作为描述
-                            owner_id=owner_username,  # 使用用户名作为owner
+                            owner_id=shared_by_id,  # 使用当前用户ID作为owner
                             is_public=0,
                             status=1
                         )
@@ -525,66 +464,39 @@ class KnowledgeBaseService:
     def get_shared_with_me(user_id: str, page: int = 1, size: int = 10) -> Dict:
         """获取共享给我的知识库列表"""
         try:
-            # 先查询分享记录
-            shares = db.session.query(KnowledgeBaseShare).filter(
+            query = db.session.query(KnowledgeBaseShare, UserKnowledgeBase, User).join(
+                UserKnowledgeBase, KnowledgeBaseShare.kb_id == UserKnowledgeBase.id
+            ).join(
+                User, KnowledgeBaseShare.shared_by_id == User.id
+            ).filter(
                 and_(
                     KnowledgeBaseShare.shared_with_id == user_id,
                     KnowledgeBaseShare.status == 1,
                     KnowledgeBaseShare.del_flag == 0,
+                    UserKnowledgeBase.del_flag == 0,
                 )
-            ).order_by(KnowledgeBaseShare.create_time.desc()).all()
-            
-            records = []
-            for share in shares:
-                # 查找对应的知识库
-                kb = db.session.query(UserKnowledgeBase).filter(
-                    and_(
-                        UserKnowledgeBase.id == share.kb_id,
-                        UserKnowledgeBase.del_flag == 0
-                    )
-                ).first()
-                
-                if not kb:
-                    continue
-                
-                # 查找分享者信息
-                shared_by_user = None
-                if share.shared_by_id.isdigit():
-                    # 如果是数字，按用户ID查找
-                    shared_by_user = db.session.query(User).filter(User.id == int(share.shared_by_id)).first()
-                else:
-                    # 如果是字符串，按用户名查找
-                    shared_by_user = db.session.query(User).filter(User.username == share.shared_by_id).first()
-                
-                if shared_by_user:
-                    # 查找对应的Dataset ID
-                    dataset = db.session.query(Dataset).filter(
-                        Dataset.name == kb.name,
-                        Dataset.create_by == kb.owner_id,
-                        Dataset.del_flag == 0
-                    ).first()
-                    
-                    records.append({
-                        'id': share.id,
-                        'kb_id': kb.id,
-                        'kb_name': kb.name,
-                        'dataset_id': dataset.id if dataset else None,  # 添加Dataset ID
-                        'shared_by_id': share.shared_by_id,
-                        'shared_by_name': shared_by_user.nickname or shared_by_user.username,
-                        'permission_level': share.permission_level,
-                        'create_time': share.create_time.strftime('%Y-%m-%d %H:%M:%S') if share.create_time else None,
-                    })
-            
-            # 分页处理
-            total = len(records)
+            ).order_by(KnowledgeBaseShare.create_time.desc())
+
+            total = query.count()
             start = (page - 1) * size
-            end = start + size
-            paginated_records = records[start:end]
+            items = query.offset(start).limit(size).all()
+
+            records = []
+            for share, kb, shared_by_user in items:
+                records.append({
+                    'id': share.id,
+                    'kb_id': kb.id,
+                    'kb_name': kb.name,
+                    'shared_by_id': share.shared_by_id,
+                    'shared_by_name': shared_by_user.nickname or shared_by_user.username,
+                    'permission_level': share.permission_level,
+                    'create_time': share.create_time.strftime('%Y-%m-%d %H:%M:%S') if share.create_time else None,
+                })
 
             return {
                 'code': 200,
                 'data': {
-                    'records': paginated_records,
+                    'records': records,
                     'total': total,
                     'page': page,
                     'size': size,

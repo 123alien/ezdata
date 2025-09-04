@@ -7,7 +7,7 @@ from utils.query_utils import get_base_query
 from utils.auth import set_insert_user, set_update_user, get_auth_token_info
 from utils.common_utils import gen_json_response, gen_uuid
 from web_apps.rag.db_models import Document, Dataset
-from web_apps.rag.kb_models import KnowledgeBaseShare
+from web_apps.rag.kb_models import KnowledgeBaseShare, UserKnowledgeBase
 from tasks.data_tasks import self_train_rag_data
 
     
@@ -50,7 +50,11 @@ class DocumentApiService(object):
         
     @staticmethod
     def _has_dataset_permission(user_info, dataset_id, need_level: str) -> bool:
-        """检查用户对数据集的权限。need_level: 'read'|'write'|'admin'"""
+        """检查用户对数据集的权限。need_level: 'read'|'write'|'admin'
+        权限判定顺序：
+        1) 数据集创建者拥有全部权限
+        2) dataset(UUID) → 通过 name + create_by 映射到 UserKnowledgeBase → 用 kb.id + shared_with_id 校验分享权限
+        """
         if not user_info:
             return False
         # owner 优先
@@ -59,12 +63,32 @@ class DocumentApiService(object):
         ).first() is not None
         if is_owned:
             return True
+
+        # 获取 dataset 信息，用于映射到 UserKnowledgeBase
+        dataset = db.session.query(Dataset).filter(
+            Dataset.id == dataset_id,
+            Dataset.del_flag == 0
+        ).first()
+        if not dataset:
+            return False
+
+        kb = db.session.query(UserKnowledgeBase).filter(
+            UserKnowledgeBase.name == dataset.name,
+            UserKnowledgeBase.owner_id == dataset.create_by,
+            UserKnowledgeBase.del_flag == 0
+        ).first()
+        if not kb:
+            return False
+
         # 分享权限等级
         level_map = {'read': 1, 'write': 2, 'admin': 3}
         required = level_map.get(need_level, 1)
+
+        # 兼容 token 中 userId / id 两种字段
+        uid = user_info.get('userId') if user_info.get('userId') is not None else user_info.get('id')
         share = db.session.query(KnowledgeBaseShare).filter(
-            KnowledgeBaseShare.kb_id == dataset_id,
-            KnowledgeBaseShare.shared_with_id == str(user_info.get('id')),
+            KnowledgeBaseShare.kb_id == kb.id,
+            KnowledgeBaseShare.shared_with_id == str(uid),
             KnowledgeBaseShare.status == 1,
             KnowledgeBaseShare.del_flag == 0
         ).first()
@@ -89,11 +113,33 @@ class DocumentApiService(object):
             own_dataset_ids = [i.id for i in db.session.query(Dataset).filter(
                 Dataset.create_by == user_info.get('username'), Dataset.del_flag == 0
             ).all()]
+            
             # 允许：分享给我的数据集
-            shared_dataset_ids = [i.kb_id for i in db.session.query(KnowledgeBaseShare).filter(
-                KnowledgeBaseShare.shared_with_id == str(user_info.get('id')),
+            # 需要将UserKnowledgeBase的ID转换为对应的Dataset ID
+            _uid = user_info.get('userId') if user_info.get('userId') is not None else user_info.get('id')
+            shared_kb_ids = [i.kb_id for i in db.session.query(KnowledgeBaseShare).filter(
+                KnowledgeBaseShare.shared_with_id == str(_uid),
                 KnowledgeBaseShare.status == 1, KnowledgeBaseShare.del_flag == 0
             ).all()]
+            
+            # 通过UserKnowledgeBase找到对应的Dataset
+            shared_dataset_ids = []
+            for kb_id in shared_kb_ids:
+                # 查找UserKnowledgeBase
+                kb = db.session.query(UserKnowledgeBase).filter(
+                    UserKnowledgeBase.id == kb_id,
+                    UserKnowledgeBase.del_flag == 0
+                ).first()
+                if kb:
+                    # 通过名称和创建者找到对应的Dataset
+                    dataset = db.session.query(Dataset).filter(
+                        Dataset.name == kb.name,
+                        Dataset.create_by == kb.owner_id,
+                        Dataset.del_flag == 0
+                    ).first()
+                    if dataset:
+                        shared_dataset_ids.append(dataset.id)
+            
             allow_dataset_ids = list(set(own_dataset_ids + shared_dataset_ids))
             if allow_dataset_ids:
                 query = query.filter(Document.dataset_id.in_(allow_dataset_ids))

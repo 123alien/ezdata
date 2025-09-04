@@ -123,14 +123,17 @@ class DatasetApiService(object):
         '''
         添加
         '''
-        # 名称 判重逻辑
+        # 名称 判重逻辑 - 只检查当前用户的重复名称
         name = req_dict.get('name', '')
         if name != '':
-            exist_obj = db.session.query(Dataset).filter(
-                Dataset.name == name,
-                Dataset.del_flag == 0).first()
-            if exist_obj:
-                return gen_json_response(code=400, msg='字段"名称"已存在')
+            user_info = get_auth_token_info()
+            if user_info and user_info.get('username'):
+                exist_obj = db.session.query(Dataset).filter(
+                    Dataset.name == name,
+                    Dataset.create_by == user_info.get('username'),
+                    Dataset.del_flag == 0).first()
+                if exist_obj:
+                    return gen_json_response(code=400, msg='字段"名称"已存在')
         obj = Dataset()
         for key in req_dict:
             if key in []:

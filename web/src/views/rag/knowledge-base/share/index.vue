@@ -15,6 +15,7 @@
           <a-select-option value="admin">管理员</a-select-option>
         </a-select>
         <a-button type="primary" @click="quickShare">分享</a-button>
+        <a-button @click="showManualShare">手动输入</a-button>
       </a-space>
     </div>
     
@@ -90,11 +91,11 @@ const fetchShareList = async () => {
   }
 };
 
-const showShareModal = () => {
-  // 保留快捷输入作为兜底
-  const kbId = window.prompt('输入知识库ID（kb_id）：');
+const showManualShare = () => {
+  // 手动输入分享信息
+  const kbId = window.prompt('输入知识库ID（kb_id）：\n例如：d013c38f2cef4b26959b243b1993150b');
   if (!kbId) return;
-  const sharedWithId = window.prompt('输入被分享用户ID（shared_with_id）：');
+  const sharedWithId = window.prompt('输入被分享用户ID（shared_with_id）：\n例如：1');
   if (!sharedWithId) return;
   const permission = window.prompt('输入权限级别（read/write/admin），默认 read：') || 'read';
   doShare(kbId, sharedWithId, permission);
