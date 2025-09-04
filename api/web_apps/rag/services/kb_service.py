@@ -273,6 +273,46 @@ class KnowledgeBaseService:
                         db.session.flush()
                         logger.info(f"自动创建UserKnowledgeBase成功: {kb.id} for Dataset {dataset.id}")
             
+            # 3. 如果还没找到，尝试通过Dataset ID查找（处理整数ID但UserKnowledgeBase不存在的情况）
+            if not kb:
+                logger.info(f"尝试通过Dataset ID查找: {kb_id}")
+                from web_apps.rag.db_models import Dataset
+                dataset = db.session.query(Dataset).filter(
+                    and_(
+                        Dataset.id == kb_id,
+                        Dataset.create_by == shared_by_id,
+                        Dataset.del_flag == 0
+                    )
+                ).first()
+                logger.info(f"Dataset查询结果: {dataset is not None}")
+                
+                if dataset:
+                    logger.info(f"Dataset信息: name={dataset.name}, create_by={dataset.create_by}")
+                    # 查找是否有对应的 UserKnowledgeBase（通过名称匹配）
+                    kb = db.session.query(UserKnowledgeBase).filter(
+                        and_(
+                            UserKnowledgeBase.name == dataset.name,
+                            UserKnowledgeBase.owner_id == shared_by_id,
+                            UserKnowledgeBase.del_flag == 0
+                        )
+                    ).first()
+                    logger.info(f"UserKnowledgeBase查询结果: {kb is not None}")
+                    
+                    # 如果没找到，自动创建一个对应的 UserKnowledgeBase
+                    if not kb:
+                        logger.info(f"自动创建UserKnowledgeBase for Dataset {dataset.id}")
+                        kb = UserKnowledgeBase(
+                            name=dataset.name,
+                            description=dataset.name,  # 使用名称作为描述
+                            owner_id=shared_by_id,  # 使用当前用户ID作为owner
+                            is_public=0,
+                            status=1
+                        )
+                        db.session.add(kb)
+                        db.session.commit()
+                        db.session.flush()
+                        logger.info(f"自动创建UserKnowledgeBase成功: {kb.id} for Dataset {dataset.id}")
+            
             if not kb:
                 logger.error(f"未找到知识库: kb_id={kb_id}, shared_by_id={shared_by_id}")
                 return {
