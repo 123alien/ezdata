@@ -126,13 +126,12 @@ watch(
       
       // 加载现有绑定信息
       try {
-        const res = await getKnowledgeBaseBinding({ kid: props.kbData.id });
-        if (res.success && res.result) {
-          formData.id = res.result.id;
-          formData.namespace = res.result.namespace;
-          formData.remark = res.result.remark || '';
+        const res: any = await getKnowledgeBaseBinding({ kid: props.kbData.id });
+        if (res && res.code === 200 && res.data) {
+          formData.id = res.data.id;
+          formData.namespace = res.data.namespace;
+          formData.remark = res.data.remark || '';
         } else {
-          // 没有绑定信息，清空表单
           formData.id = undefined;
           formData.namespace = '';
           formData.remark = '';
@@ -157,14 +156,14 @@ const handleOk = async () => {
       remark: formData.remark,
     };
     
-    const res = await createOrUpdateBinding(params);
+    const res: any = await createOrUpdateBinding(params);
     
-    if (res.success) {
-      message.success(res.message || '操作成功');
+    if (res && res.code === 200) {
+      message.success(res.msg || '操作成功');
       emit('success');
       handleCancel();
     } else {
-      message.error(res.message || '操作失败');
+      message.error(res?.msg || '操作失败');
     }
   } catch (error) {
     console.error('操作失败:', error);
@@ -178,14 +177,14 @@ const handleDelete = async () => {
   try {
     deleteLoading.value = true;
     
-    const res = await deleteKnowledgeBaseBinding(formData.kb_id);
+    const res: any = await deleteKnowledgeBaseBinding(formData.kb_id);
     
-    if (res.success) {
-      message.success(res.message || '删除成功');
+    if (res && res.code === 200) {
+      message.success(res.msg || '删除成功');
       emit('success');
       handleCancel();
     } else {
-      message.error(res.message || '删除失败');
+      message.error(res?.msg || '删除失败');
     }
   } catch (error) {
     console.error('删除失败:', error);

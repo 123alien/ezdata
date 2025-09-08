@@ -175,3 +175,23 @@ def document_deleteBatch():
         return jsonify(gen_json_response(code=400, msg=not_valid))
     res_data = DocumentApiService.delete_batch(req_dict)
     return jsonify(res_data)
+
+
+@document_bp.route('/sync/bulk', methods=['POST'])
+@validate_user
+@validate_permissions([])
+def document_bulk_sync():
+    '''
+    对指定数据集进行批量回填同步到 TrustRAG。
+    '''
+    req_dict = get_req_para(request)
+    verify_dict = {
+        "dataset_id": {"name": "数据集ID", "required": True}
+    }
+    not_valid = validate_params(req_dict, verify_dict)
+    if not_valid:
+        return jsonify(gen_json_response(code=400, msg=not_valid))
+    from web_apps.rag.services.trustrag_sync_service import bulk_sync_dataset
+    res = bulk_sync_dataset(req_dict.get('dataset_id'))
+    code = 200 if res.get('success') else 500
+    return jsonify(gen_json_response(code=code, data=res, msg='批量同步完成' if code == 200 else res.get('message')))

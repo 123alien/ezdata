@@ -55,6 +55,37 @@ def _make_trustrag_request(endpoint, method='POST', data=None, headers=None):
     except Exception as e:
         return {"error": "未知错误", "detail": str(e)}
 
+
+def _build_auth_headers(dataset_id=None, namespace=None):
+    """基于当前登录用户、数据集/namespace 生成短期 SSO，并返回带 Authorization 的请求头。"""
+    try:
+        from utils.auth import get_auth_token_info
+        import jwt
+        from datetime import datetime, timedelta
+        user_info = get_auth_token_info() or {}
+        user_id = user_info.get('user_id') or user_info.get('id')
+        tenant_id = user_info.get('tenant_id', 0)
+        payload = {
+            'user_id': user_id,
+            'tenant_id': tenant_id,
+            'dataset_id': dataset_id,
+            'namespace': namespace,
+            'permission_level': 'read',
+            'exp': datetime.utcnow() + timedelta(minutes=10),
+            'iat': datetime.utcnow(),
+        }
+        secret_key = current_app.config.get('SECRET_KEY', 'ezdata-secret-key')
+        token = jwt.encode(payload, secret_key, algorithm='HS256')
+        if isinstance(token, bytes):
+            token = token.decode('utf-8')
+        return {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {token}'
+        }
+    except Exception:
+        # 退化为仅 content-type，后续请求若需要鉴权会返回401
+        return {'Content-Type': 'application/json'}
+
 @external_rag_bp.route('/health', methods=['GET'])
 def health_check():
     """
@@ -94,8 +125,12 @@ def chat():
             data = {"messages": req_dict['messages']}
         else:
             return gen_json_response(code=400, msg="请求参数错误", data={"detail": "缺少message、content或messages参数"})
+        # 携带可选的数据集与 namespace，用于生成 SSO
+        dataset_id = req_dict.get('dataset_id')
+        namespace = req_dict.get('namespace')
+        headers = _build_auth_headers(dataset_id=dataset_id, namespace=namespace)
         
-        result = _make_trustrag_request('/chat', method='POST', data=data)
+        result = _make_trustrag_request('/chat', method='POST', data=data, headers=headers)
         return gen_json_response(code=200, msg="查询成功", data=result)
     except Exception as e:
         return gen_json_response(code=500, msg="查询失败", data={"error": str(e)})
@@ -110,9 +145,11 @@ def text_query():
         
         if 'query' not in req_dict:
             return gen_json_response(code=400, msg="请求参数错误", data={"detail": "缺少query参数"})
-        
+        dataset_id = req_dict.get('dataset_id')
+        namespace = req_dict.get('namespace')
+        headers = _build_auth_headers(dataset_id=dataset_id, namespace=namespace)
         data = {"query": req_dict['query']}
-        result = _make_trustrag_request('/text', method='POST', data=data)
+        result = _make_trustrag_request('/text', method='POST', data=data, headers=headers)
         
         # 返回纯文本结果
         return result, 200, {'Content-Type': 'text/plain; charset=utf-8'}
@@ -326,6 +363,9 @@ def generate_sso_token():
         # 使用简单的密钥（生产环境应该使用环境变量）
         secret_key = current_app.config.get('SECRET_KEY', 'ezdata-secret-key')
         token = jwt.encode(token_payload, secret_key, algorithm='HS256')
+        # PyJWT 1.x 返回 bytes，需要转成 str
+        if isinstance(token, bytes):
+            token = token.decode('utf-8')
         
         return gen_json_response(code=200, msg="SSO token 生成成功", data={
             'token': token,
@@ -392,18 +432,17 @@ def ask_question():
         if dataset_id and not kb_service.has_permission(dataset_id, user_id, 'read'):
             return gen_json_response(code=403, msg="权限不足", data={"detail": "无权限访问此知识库"})
         
-        # 构建候选请求体（若提供 namespace 则一并传递）
+        # 仅尝试实际存在的端点
+        headers = _build_auth_headers(dataset_id=dataset_id, namespace=namespace)
         payloads = [
-            ('/ask', { 'question': question, 'dataset_id': dataset_id, 'namespace': namespace, 'user_id': user_id }),
-            ('/search_text', { 'query': question, 'dataset_id': dataset_id, 'namespace': namespace, 'user_id': user_id }),
-            ('/chat', { 'message': question, 'dataset_id': dataset_id, 'namespace': namespace, 'user_id': user_id }),
-            ('/text', { 'content': question, 'dataset_id': dataset_id, 'namespace': namespace, 'user_id': user_id }),
+            ('/chat', { 'message': question }),
+            ('/text', { 'content': question }),
         ]
         
         last_error = None
         for endpoint, body in payloads:
             try:
-                result = _make_trustrag_request(endpoint, method='POST', data=body)
+                result = _make_trustrag_request(endpoint, method='POST', data=body, headers=headers)
                 if isinstance(result, dict) and result.get('error'):
                     last_error = result
                     continue

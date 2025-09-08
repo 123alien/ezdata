@@ -45,6 +45,67 @@ class KnowledgeBaseService:
                 'data': None,
                 'msg': f'知识库创建失败: {str(e)}'
             }
+
+    @staticmethod
+    def get_knowledge_base_by_id(kb_id: str) -> Optional[UserKnowledgeBase]:
+        """根据 KB 整型ID 或 Dataset(UUID) 定位到 UserKnowledgeBase。仅查询，不自动创建。"""
+        # KB 数字ID
+        if isinstance(kb_id, (int,)) or (isinstance(kb_id, str) and kb_id.isdigit()):
+            kb = db.session.query(UserKnowledgeBase).filter(
+                UserKnowledgeBase.id == int(kb_id),
+                UserKnowledgeBase.del_flag == 0,
+            ).first()
+            return kb
+        # Dataset UUID → 名称+创建者 映射到 KB
+        if isinstance(kb_id, str) and len(kb_id) >= 32:
+            dataset = db.session.query(Dataset).filter(
+                Dataset.id == kb_id,
+                Dataset.del_flag == 0,
+            ).first()
+            if not dataset:
+                return None
+            kb = db.session.query(UserKnowledgeBase).filter(
+                UserKnowledgeBase.name == dataset.name,
+                UserKnowledgeBase.owner_id == dataset.create_by,
+                UserKnowledgeBase.del_flag == 0,
+            ).first()
+            return kb
+        return None
+
+    @staticmethod
+    def has_permission(kb_id: str, user_id: str, need_level: str = 'read') -> bool:
+        """校验用户在 KB 上的权限。need_level: read|write|admin
+        - owner 拥有 admin
+        - 分享表按 permission_level 判定
+        """
+        kb = KnowledgeBaseService.get_knowledge_base_by_id(kb_id)
+        if not kb:
+            return False
+        # 将 user_id(数字) 转为 username
+        username = None
+        try:
+            uid = int(user_id) if isinstance(user_id, (int, str)) and str(user_id).isdigit() else None
+            if uid is not None:
+                u = db.session.query(User).filter(User.id == uid).first()
+                username = u.username if u else None
+        except Exception:
+            username = None
+        # 所有者
+        if username and kb.owner_id == username:
+            return True if need_level in ['read', 'write', 'admin'] else False
+        # 分享
+        level_map = {'read': 1, 'write': 2, 'admin': 3}
+        required = level_map.get(need_level, 1)
+        share = db.session.query(KnowledgeBaseShare).filter(
+            KnowledgeBaseShare.kb_id == kb.id,
+            KnowledgeBaseShare.shared_with_id == str(user_id),
+            KnowledgeBaseShare.status == 1,
+            KnowledgeBaseShare.del_flag == 0,
+        ).first()
+        if not share:
+            return False
+        current = level_map.get((share.permission_level or 'read'), 1)
+        return current >= required
     
     @staticmethod
     def get_user_knowledge_bases(user_id: str, page: int = 1, size: int = 10) -> Dict:

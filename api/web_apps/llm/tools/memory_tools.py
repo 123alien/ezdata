@@ -30,7 +30,7 @@ class CoreMemoryAppendTool(BaseTool):
     description: str = (
         "追加加核心记忆，若用户提到新的关键信息，请使用此工具添加记忆"
     )
-    return_direct = False
+    return_direct: bool = False
     conversation_id: str = ''
     args_schema: Type[BaseModel] = MemoryInput
 
@@ -52,7 +52,7 @@ class CoreMemoryReplaceTool(BaseTool):
     description: str = (
         "若用户提到的信息与当前核心记忆有冲突，请使用此工具替换现有核心记忆的一部分为新的核心记忆，只替换需变更部分的记忆"
     )
-    return_direct = False
+    return_direct: bool = False
     conversation_id: str = ''
     args_schema: Type[BaseModel] = MemoryReplaceInput
 
@@ -81,7 +81,7 @@ class ArchivalMemorySearchTool(BaseTool):
     description: str = (
         "若用户提出未知的问题，可使用该工具查询相关历史归档记忆"
     )
-    return_direct = False
+    return_direct: bool = False
     conversation_id: str = ''
     args_schema: Type[BaseModel] = MemorySearchInput
 

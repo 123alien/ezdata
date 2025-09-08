@@ -8,9 +8,9 @@ const rag: AppRouteModule = {
   redirect: '/rag/external',
   meta: {
     orderNo: 10,
-    icon: 'ion:library-outline',
-    title: 'RAG 知识库',
-    hideChildrenInMenu: false,
+    icon: 'ion:cloud-outline',
+    title: 'TrustRAG 外部服务',
+    hideChildrenInMenu: true, // 隐藏子菜单，只显示主菜单
   },
   children: [
     {
@@ -20,6 +20,16 @@ const rag: AppRouteModule = {
       meta: {
         title: 'TrustRAG 外部服务',
         icon: 'ion:cloud-outline',
+        hideMenu: false,
+      },
+    },
+    {
+      path: 'trustrag-config',
+      name: 'TrustRAGConfig',
+      component: () => import('/@/views/rag/trustrag-config/index.vue'),
+      meta: {
+        title: 'TrustRAG 接口配置',
+        icon: 'ion:settings',
         hideMenu: false,
       },
     },
@@ -81,6 +91,16 @@ const rag: AppRouteModule = {
         title: '测试路由',
         icon: 'ion:bug-outline',
         hideMenu: false,
+      },
+    },
+    {
+      path: 'trustrag-ui',
+      name: 'TrustRAGUI',
+      component: () => import('/@/views/rag/trustrag-ui/index.vue'),
+      meta: {
+        title: 'TrustRAG UI',
+        icon: 'ion:chatbubbles',
+        hideMenu: true, // 隐藏菜单，只能通过外部链接访问
       },
     },
   ],

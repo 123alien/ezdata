@@ -2,7 +2,10 @@
   <div class="knowledge-base-container">
     <div class="page-header">
       <h2>我的知识库</h2>
-      <a-button type="primary" @click="showCreateModal">创建知识库</a-button>
+      <a-space>
+        <a-button type="primary" @click="showCreateModal">创建知识库</a-button>
+        <a-button @click="handleBulkSync" :disabled="!currentDataset">一键同步到TrustRAG</a-button>
+      </a-space>
     </div>
     
     <!-- 知识库列表 -->
@@ -147,6 +150,7 @@ import {
   uploadDocument,
   deleteDocument as deleteDocumentApi,
   trustRAGVectorize,
+  bulkSyncDocuments,
 } from '/@/api/rag/knowledge-base.api';
 import BindingModal from '../components/BindingModal.vue';
 import { useGlobSetting } from '/@/hooks/setting';
@@ -300,6 +304,24 @@ const manageDocuments = async (record: any) => {
   currentDataset.value = record;
   documentModalVisible.value = true;
   await fetchDocumentList(record.id);
+};
+
+// 一键同步到 TrustRAG（批量回填）
+const handleBulkSync = async () => {
+  if (!currentDataset.value) {
+    message.warning('请先点击某个知识库的“文档管理”以选中当前数据集');
+    return;
+  }
+  try {
+    const res: any = await bulkSyncDocuments({ dataset_id: currentDataset.value.id });
+    if (res && res.code === 200) {
+      message.success(`同步完成，共 ${res.data?.total || 0} 条，成功 ${res.data?.success_count || 0} 条`);
+    } else {
+      message.error(res?.msg || '同步失败');
+    }
+  } catch (e: any) {
+    message.error(e?.message || '同步失败');
+  }
 };
 
 // 获取文档列表

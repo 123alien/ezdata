@@ -15,6 +15,8 @@ export enum Api {
   DeleteDocument = '/api/rag/document/delete',              // 删除文档
   GetDocumentDetail = '/api/rag/document/queryById',        // 获取文档详情
   TrainDocument = '/api/rag/document/train',                // 训练文档（向量化）
+  // 批量回填到 TrustRAG
+  BulkSyncDocuments = '/api/rag/document/sync/bulk',
   
   // TrustRAG向量化接口
   TrustRAGVectorize = '/api/rag/external/vectorize',        // TrustRAG向量化
@@ -54,6 +56,11 @@ export const getDatasetDetail = (params: any) => {
 // ========== 文档管理（ezdata document API）==========
 export const getDocuments = (params?: any) => {
   return defHttp.get({ url: Api.GetDocuments, params }, { joinPrefix: false, isTransformResponse: false });
+};
+
+// 批量同步当前数据集所有文档到 TrustRAG
+export const bulkSyncDocuments = (data: { dataset_id: string }) => {
+  return defHttp.post({ url: Api.BulkSyncDocuments, data }, { joinPrefix: false, isTransformResponse: false });
 };
 
 export const uploadDocument = (data: any) => {

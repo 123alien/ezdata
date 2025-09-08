@@ -196,14 +196,9 @@ const loadKnowledgeBases = async () => {
   }
 };
 
-// 代理后的 UI 地址生成
+// 打开外部 NextChat 实例
 const buildTrustragUiUrl = () => {
-  if (!selectedDatasetId.value && !namespace.value) return '';
-  if (!ssoToken.value) return '';
-  const qs = new URLSearchParams({ token: ssoToken.value });
-  if (selectedDatasetId.value) qs.set('dataset_id', selectedDatasetId.value);
-  if (namespace.value) qs.set('namespace', namespace.value);
-  return `/trustrag-ui/?${qs.toString()}`;
+  return 'http://localhost:3600/';
 };
 
 const onDatasetChange = async (value: string) => {
@@ -232,6 +227,8 @@ const onDatasetChange = async (value: string) => {
   }
 };
 
+
+
 const generateToken = async () => {
   if (!selectedDatasetId.value && !namespace.value) {
     message.warning('请先选择知识库或填写 namespace');
@@ -253,10 +250,7 @@ const generateToken = async () => {
     }
   } catch (error) {
     console.error('生成令牌失败:', error);
-    ssoToken.value = 'mock-token-' + Date.now();
-    permissionLevel.value = 'read';
-    tokenExpiryTime.value = new Date(Date.now() + 600000).toLocaleString('zh-CN');
-    message.success('模拟令牌生成成功（开发模式）');
+    message.error('生成令牌失败');
   }
 };
 
@@ -271,38 +265,49 @@ const askQuickQuestion = async () => {
     return;
   }
 
-  // 优先直连 TrustRAG
+  // 优先直连 TrustRAG（使用 SSO Token，并按 JSON 解析 response 字段）
   try {
+    const isDefinitionQuestion = /是什么|定义|概念|又称|亦称|是指/.test(quickQuestion.value);
+    const mode = isDefinitionQuestion ? 'extract' : 'auto';
     const response = await fetch('/trustrag/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(ssoToken.value ? { Authorization: `Bearer ${ssoToken.value}` } : {}),
+      },
       body: JSON.stringify({
         message: quickQuestion.value,
         dataset_id: selectedDatasetId.value || undefined,
         namespace: namespace.value || undefined,
+        mode,
       }),
     });
     if (response.ok) {
       const data = await response.json();
-      quickAnswer.value = JSON.stringify(data, null, 2);
-      message.success('提问成功（直连 TrustRAG）');
+      quickAnswer.value = data?.response ?? JSON.stringify(data, null, 2);
+      message.success(`提问成功（直连 TrustRAG，模式: ${mode}）`);
       return;
     }
   } catch {}
 
-  // 降级走后端
+  // 降级走后端（代理）
   try {
     const result = await askQuestion(quickQuestion.value, selectedDatasetId.value || undefined, namespace.value || undefined);
     if (result.code === 200) {
-      quickAnswer.value = JSON.stringify(result.data, null, 2);
+      if (result.data && result.data.result && result.data.result.response) {
+        quickAnswer.value = result.data.result.response;
+      } else if (result.data && result.data.response) {
+        quickAnswer.value = result.data.response;
+      } else {
+        quickAnswer.value = JSON.stringify(result.data, null, 2);
+      }
       message.success('提问成功（后端代理）');
     } else {
       message.error(result.msg || '提问失败');
     }
   } catch (error) {
     console.error('提问失败:', error);
-    quickAnswer.value = `这是对"${quickQuestion.value}"的模拟回答（开发模式）。\n\n实际部署后，这里将显示 TrustRAG 服务的真实回答。`;
-    message.success('模拟提问成功（开发模式）');
+    message.error('提问失败');
   }
 };
 
@@ -353,10 +358,6 @@ const testTrustRAGConnection = async () => {
 
 const openTrustRAGInNewWindow = () => {
   const url = buildTrustragUiUrl();
-  if (!url) {
-    message.warning('请先生成访问令牌');
-    return;
-  }
   window.open(url, '_blank', 'width=1200,height=800');
 };
 

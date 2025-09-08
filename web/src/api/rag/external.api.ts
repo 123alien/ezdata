@@ -26,7 +26,7 @@ export function generateSSOToken(dataset_id?: string, namespace?: string) {
       url: Api.GenerateSSOToken,
       data: { dataset_id, namespace },
     },
-    { joinPrefix: false }
+    { joinPrefix: false, isTransformResponse: false }
   );
 }
 
@@ -42,7 +42,7 @@ export function askQuestion(question: string, dataset_id?: string, namespace?: s
       url: Api.AskQuestion,
       data: { question, dataset_id, namespace },
     },
-    { joinPrefix: false }
+    { joinPrefix: false, isTransformResponse: false }
   );
 }
 

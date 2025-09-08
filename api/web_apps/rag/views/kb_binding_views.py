@@ -23,16 +23,30 @@ def get_binding():
         kb_service = KnowledgeBaseService()
         
         # 检查权限
+        # 兼容：kb_id 可为 KB 整数ID，或 Dataset(UUID)
         kb = kb_service.get_knowledge_base_by_id(kb_id)
         if not kb:
-            return gen_json_response(code=404, msg='知识库不存在')
+            # 若按 KB ID 未找到，尝试用 Dataset(UUID) 映射到 KB（名称+创建者）
+            try:
+                from web_apps.rag.db_models import Dataset
+                ds = db.session.query(Dataset).filter(Dataset.id == kb_id, Dataset.del_flag == 0).first()
+                if ds:
+                    kb = db.session.query(UserKnowledgeBase).filter(
+                        UserKnowledgeBase.name == ds.name,
+                        UserKnowledgeBase.owner_id == ds.create_by,
+                        UserKnowledgeBase.del_flag == 0
+                    ).first()
+            except Exception:
+                kb = None
+            if not kb:
+                return gen_json_response(code=404, msg='知识库不存在')
         
         if not kb_service.has_permission(kb_id, current_user.get('userId'), 'read'):
             return gen_json_response(code=403, msg='无权限访问此知识库')
         
         # 查询绑定信息
         binding = db.session.query(KnowledgeBaseBinding).filter(
-            KnowledgeBaseBinding.kb_id == kb_id,
+            KnowledgeBaseBinding.kb_id == kb.id,
             KnowledgeBaseBinding.del_flag == 0
         ).first()
         
@@ -70,9 +84,22 @@ def create_or_update_binding():
         kb_service = KnowledgeBaseService()
         
         # 检查权限
+        # 兼容：kb_id 可为 KB 整数ID，或 Dataset(UUID)
         kb = kb_service.get_knowledge_base_by_id(kb_id)
         if not kb:
-            return gen_json_response(code=404, msg='知识库不存在')
+            try:
+                from web_apps.rag.db_models import Dataset
+                ds = db.session.query(Dataset).filter(Dataset.id == kb_id, Dataset.del_flag == 0).first()
+                if ds:
+                    kb = db.session.query(UserKnowledgeBase).filter(
+                        UserKnowledgeBase.name == ds.name,
+                        UserKnowledgeBase.owner_id == ds.create_by,
+                        UserKnowledgeBase.del_flag == 0
+                    ).first()
+            except Exception:
+                kb = None
+            if not kb:
+                return gen_json_response(code=404, msg='知识库不存在')
         
         if not kb_service.has_permission(kb_id, current_user.get('userId'), 'write'):
             return gen_json_response(code=403, msg='无权限修改此知识库')
@@ -80,7 +107,7 @@ def create_or_update_binding():
         # 检查namespace是否已被其他知识库使用
         existing_binding = db.session.query(KnowledgeBaseBinding).filter(
             KnowledgeBaseBinding.namespace == namespace,
-            KnowledgeBaseBinding.kb_id != kb_id,
+            KnowledgeBaseBinding.kb_id != kb.id,
             KnowledgeBaseBinding.del_flag == 0
         ).first()
         
@@ -89,7 +116,7 @@ def create_or_update_binding():
         
         # 查找现有绑定
         binding = db.session.query(KnowledgeBaseBinding).filter(
-            KnowledgeBaseBinding.kb_id == kb_id,
+            KnowledgeBaseBinding.kb_id == kb.id,
             KnowledgeBaseBinding.del_flag == 0
         ).first()
         
@@ -103,7 +130,7 @@ def create_or_update_binding():
         else:
             # 创建新绑定
             binding = KnowledgeBaseBinding(
-                kb_id=kb_id,
+                kb_id=kb.id,
                 namespace=namespace,
                 remark=remark,
                 create_by=current_user.get('username')

@@ -303,6 +303,14 @@ class DocumentApiService(object):
         db.session.add(obj)
         db.session.commit()
         db.session.flush()
+        # 同步到 TrustRAG（重入库）
+        try:
+            from utils.common_utils import parse_json
+            from web_apps.rag.services.trustrag_sync_service import sync_edited_document
+            meta = parse_json(obj.meta_data)
+            _ = sync_edited_document(dataset_id=obj.dataset_id, meta_data=meta)
+        except Exception as se:
+            print(f"[TrustRAG Sync Edit] skip or failed: {se}")
         return gen_json_response(msg='编辑成功', extends={'success': True})
     
     @staticmethod
@@ -323,6 +331,14 @@ class DocumentApiService(object):
         db.session.add(del_obj)
         db.session.commit()
         db.session.flush()
+        # 同步删除到 TrustRAG
+        try:
+            from utils.common_utils import parse_json
+            from web_apps.rag.services.trustrag_sync_service import sync_deleted_document
+            meta = parse_json(del_obj.meta_data)
+            _ = sync_deleted_document(dataset_id=del_obj.dataset_id, meta_data=meta)
+        except Exception as se:
+            print(f"[TrustRAG Sync Delete] skip or failed: {se}")
         return gen_json_response(code=200, msg='删除成功', extends={'success': True})
     
     @staticmethod
