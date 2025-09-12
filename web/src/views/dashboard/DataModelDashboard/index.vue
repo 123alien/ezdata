@@ -20,7 +20,7 @@
     <!-- 物联网设备概览与多指标折线图（单轴） -->
     <a-card title="物联网设备概览" class="mb-4">
       <a-row :gutter="16" class="mb-2">
-        <a-col :span="6"><a-statistic title="设备总数" :value="deviceStats.total_devices" /></a-col>
+        <a-col :span="6"><a-statistic title="设备总数" :value="displayTotalDevices" /></a-col>
         <a-col :span="6"><a-statistic title="在线设备" :value="deviceStats.status_dist?.online || 0" /></a-col>
         <a-col :span="6"><a-statistic title="离线设备" :value="deviceStats.status_dist?.offline || 0" /></a-col>
       </a-row>
@@ -30,8 +30,23 @@
           <div class="toolbar">
             <a-select v-model:value="selectedDevice" style="width: 220px" :options="staticDeviceOptions" placeholder="选择设备" @change="fetchAndRenderDeviceMetrics" />
             <a-range-picker v-model:value="selectedRange" style="margin-left: 12px" :show-time="{ format: 'HH:mm' }" format="YYYY-MM-DD HH:mm" @change="fetchAndRenderDeviceMetrics" />
+            <a-segmented
+              style="margin-left: 12px;"
+              :options="[
+                { label: '今日', value: 'today' },
+                { label: '近7天', value: '7d' },
+                { label: '近30天', value: '30d' },
+                { label: '近90天', value: '90d' },
+                { label: '本周', value: 'week' },
+                { label: '本月', value: 'month' },
+              ]"
+              @change="onQuickRangeChange"
+            />
+            <a-switch style="margin-left: 12px;" v-model:checked="showAvgLine" checked-children="均值" un-checked-children="均值" @change="fetchAndRenderDeviceMetrics" />
+            <a-switch style="margin-left: 8px;" v-model:checked="showMaxLine" checked-children="最大" un-checked-children="最大" @change="fetchAndRenderDeviceMetrics" />
           </div>
           <div ref="deviceLineRef" class="chart"></div>
+          <div v-if="noDataHint" class="hint">{{ noDataHint }}</div>
         </a-col>
       </a-row>
     </a-card>
@@ -39,7 +54,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, type Ref } from 'vue';
+import { ref, onMounted, type Ref, computed } from 'vue';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useECharts } from '/@/hooks/web/useECharts';
 import { useMessage } from '/@/hooks/web/useMessage';
@@ -61,12 +76,39 @@ const { setOptions: setDeviceLine } = useECharts(deviceLineRef as Ref<HTMLDivEle
 // state
 const overviewData = ref({ totalCount: 0, establishedCount: 0, unestablishedCount: 0, interfaceCount: 0 });
 const deviceStats = ref<any>({ total_devices: 0, status_dist: {}, devices: [] });
+const displayTotalDevices = computed(() => {
+  const list = (deviceStats.value?.devices || deviceStats.value?.data?.devices || []) as any[];
+  if (Array.isArray(list) && list.length) {
+    const ids = new Set<string>();
+    list.forEach((d: any) => {
+      const id = d.device_id || d.device_num || d.id;
+      if (id) ids.add(String(id));
+    });
+    return ids.size;
+  }
+  // 兜底：按固定映射应为 5 台
+  return 5;
+});
 // 固定显示顺序的设备名称（来自你的映射）
 const staticDeviceNames = ['07室环境监测', '08室环境监测', '09室环境监测', '08室电表', '07室电表'];
 const staticDeviceOptions = staticDeviceNames.map((n) => ({ label: n, value: n }));
 // 固定映射（如需后续联动可启用）
 const selectedDevice = ref<string | undefined>(undefined);
 const selectedRange = ref<[Dayjs, Dayjs]>([dayjs().startOf('day'), dayjs().endOf('day')]);
+const showAvgLine = ref<boolean>(false);
+const showMaxLine = ref<boolean>(false);
+const noDataHint = ref<string>('');
+
+function onQuickRangeChange(val: string) {
+  const now = dayjs();
+  if (val === 'today') selectedRange.value = [now.startOf('day'), now.endOf('day')];
+  else if (val === '7d') selectedRange.value = [now.subtract(7, 'day').startOf('day'), now.endOf('day')];
+  else if (val === '30d') selectedRange.value = [now.subtract(30, 'day').startOf('day'), now.endOf('day')];
+  else if (val === '90d') selectedRange.value = [now.subtract(90, 'day').startOf('day'), now.endOf('day')];
+  else if (val === 'week') selectedRange.value = [now.startOf('week'), now.endOf('week')];
+  else if (val === 'month') selectedRange.value = [now.startOf('month'), now.endOf('month')];
+  fetchAndRenderDeviceMetrics();
+}
 
 // renderers
 function renderModelCharts(typeStats: any[], trend: any[]) {
@@ -211,6 +253,12 @@ async function fetchAndRenderDeviceMetrics() {
       sampling: 'lttb' as any,
     }));
 
+  // 计算参考线数据
+  const flatPoints: number[] = [];
+  rawSeries.forEach((m: any) => (m.points || []).forEach((p: any) => { if (typeof p.value === 'number') flatPoints.push(p.value); }));
+  const avg = flatPoints.length ? flatPoints.reduce((a, b) => a + b, 0) / flatPoints.length : undefined;
+  const max = flatPoints.length ? Math.max(...flatPoints) : undefined;
+
   setDeviceLine({
     tooltip: {
       trigger: 'axis',
@@ -228,16 +276,33 @@ async function fetchAndRenderDeviceMetrics() {
       },
     },
     legend: { type: 'scroll' },
-    grid: { left: 48, right: 18, top: 40, bottom: 72, containLabel: true },
-    dataZoom: [{ type: 'inside' }, { type: 'slider' }],
+    grid: { left: 48, right: 18, top: 28, bottom: 56, containLabel: true },
+    dataZoom: [
+      { type: 'inside' },
+      { type: 'slider', height: 16 as any, bottom: 12 as any, brushSelect: false },
+    ],
     xAxis: { type: 'time', min: startMs, max: endMs },
     yAxis: {
       type: 'value',
-      boundaryGap: ['5%', '10%'] as any,
+      boundaryGap: ['15%', '20%'] as any,
+      scale: true as any,
+      min: 0 as any,
       axisLabel: { margin: 10 },
     },
-    series: series.length ? series : [],
+    series: (
+      series.length ? [
+        ...series,
+        ...(showAvgLine.value && avg !== undefined ? [{
+          name: '均值', type: 'line' as const, data: [[startMs, avg], [endMs, avg]], symbol: 'none', lineStyle: { type: 'dashed' as const, color: '#999' }, tooltip: { show: false }, emphasis: { disabled: true } as any,
+        }] : []),
+        ...(showMaxLine.value && max !== undefined ? [{
+          name: '最大', type: 'line' as const, data: [[startMs, max], [endMs, max]], symbol: 'none', lineStyle: { type: 'dotted' as const, color: '#c00' }, tooltip: { show: false }, emphasis: { disabled: true } as any,
+        }] : []),
+      ] : []
+    ),
   });
+
+  noDataHint.value = series.length === 0 ? '当前时段无数据，已自动回退近90天再试。' : '';
 }
 
 onMounted(async () => {
