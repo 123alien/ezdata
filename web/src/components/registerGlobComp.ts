@@ -57,7 +57,8 @@ import {
   Skeleton,
   Cascader,
   Rate,
-  Progress
+  Progress,
+  Statistic
 } from 'ant-design-vue';
 const compList = [AntButton.Group, Icon, AIcon, JUploadButton];
 

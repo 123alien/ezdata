@@ -8,6 +8,9 @@ from utils.web_utils import get_req_para, validate_params, generate_download_fil
 from utils.common_utils import gen_json_response
 from web_apps.datamodel.services.datamodel_api_services import DataModelApiService
 from web_apps.datamodel.services.datamodel_query_api_service import DataModelQueryApiService
+from utils.etl_utils import get_writer_model
+from bson import ObjectId
+from datetime import datetime
 datamodel_bp = Blueprint('datamodel', __name__)
 
 
@@ -293,3 +296,345 @@ def datamodel_exportXls():
     except Exception as e:
         return jsonify(gen_json_response(code=500, msg=f"未知错误：{e}"))
 
+
+# Dashboard API 路由
+@datamodel_bp.route('/dashboard/overview', methods=['GET'])
+@validate_user
+@validate_permissions([])
+def get_dashboard_overview():
+    '''
+    获取数据模型总览数据
+    '''
+    try:
+        result = DataModelApiService().get_dashboard_overview()
+        return jsonify(gen_json_response(data=result))
+    except Exception as e:
+        return jsonify(gen_json_response(code=500, msg=f"获取总览数据失败：{e}"))
+
+
+@datamodel_bp.route('/dashboard/type-stats', methods=['GET'])
+@validate_user
+@validate_permissions([])
+def get_type_stats():
+    '''
+    获取数据模型类型统计
+    '''
+    try:
+        result = DataModelApiService().get_type_stats()
+        return jsonify(gen_json_response(data=result))
+    except Exception as e:
+        return jsonify(gen_json_response(code=500, msg=f"获取类型统计失败：{e}"))
+
+
+@datamodel_bp.route('/dashboard/trend', methods=['GET'])
+@validate_user
+@validate_permissions([])
+def get_creation_trend():
+    '''
+    获取数据模型创建趋势
+    '''
+    try:
+        result = DataModelApiService().get_creation_trend()
+        return jsonify(gen_json_response(data=result))
+    except Exception as e:
+        return jsonify(gen_json_response(code=500, msg=f"获取创建趋势失败：{e}"))
+
+
+@datamodel_bp.route('/dashboard/field-stats', methods=['GET'])
+@validate_user
+@validate_permissions([])
+def get_field_stats():
+    '''
+    获取数据模型字段统计
+    '''
+    try:
+        result = DataModelApiService().get_field_stats()
+        return jsonify(gen_json_response(data=result))
+    except Exception as e:
+        return jsonify(gen_json_response(code=500, msg=f"获取字段统计失败：{e}"))
+
+
+@datamodel_bp.route('/dashboard/iot-devices', methods=['GET'])
+def get_iot_devices():
+    '''
+    获取物联网设备数据
+    '''
+    try:
+        result = DataModelApiService().get_iot_device_data()
+        return jsonify(gen_json_response(data=result))
+    except Exception as e:
+        return jsonify(gen_json_response(code=500, msg=f"获取设备数据失败：{e}"))
+
+
+@datamodel_bp.route('/dashboard/device-stats', methods=['GET'])
+def get_device_statistics():
+    '''
+    获取设备统计信息
+    '''
+    try:
+        result = DataModelApiService().get_device_statistics()
+        return jsonify(gen_json_response(data=result))
+    except Exception as e:
+        return jsonify(gen_json_response(code=500, msg=f"获取设备统计失败：{e}"))
+
+@datamodel_bp.route('/dashboard/device-metrics', methods=['GET'])
+def get_device_metrics():
+    '''
+    获取设备多指标时序
+    '''
+    try:
+        req = get_req_para(request)
+        print(f"device-metrics 请求参数: {req}")
+        device_name = req.get('deviceName') or req.get('device_name')
+        start_ts = int(req.get('start') or 0)
+        end_ts = int(req.get('end') or 0)
+        print(f"解析后参数: device_name={device_name}, start={start_ts}, end={end_ts}")
+        if not device_name or not start_ts or not end_ts:
+            return jsonify(gen_json_response(code=400, msg='参数缺失'))
+        result = DataModelApiService().get_device_metrics(device_name, start_ts, end_ts)
+        return jsonify(gen_json_response(data=result))
+    except Exception as e:
+        print(f"device-metrics 错误: {e}")
+        return jsonify(gen_json_response(code=500, msg=f"获取设备时序失败：{e}"))
+
+
+# 物联网设备上报接口：实时写入 MongoDB
+@datamodel_bp.route('/ingest', methods=['POST'])
+@validate_user
+@validate_permissions([])
+def datamodel_ingest():
+    '''
+    设备数据上报写入接口（实时写入 MongoDB）
+    - 参数：
+      id / model_id: 数据模型ID（指向Mongo集合）
+      data: 字典或数组，设备数据内容
+      load_type: 可选，insert/update/upsert，默认 upsert
+      only_fields: 可选，数组，作为更新匹配键，默认 ["device_id", "_id", "device_num"]
+    '''
+    req_dict = get_req_para(request)
+    # 兼容 id / model_id
+    model_id = req_dict.get('model_id') or req_dict.get('id')
+    data = req_dict.get('data')
+    load_type = req_dict.get('load_type', 'upsert')
+    only_fields = req_dict.get('only_fields') or ["device_id", "_id", "device_num"]
+
+    verify_dict = {
+        "model_id": {"name": "模型ID", "required": True},
+        "data": {"name": "数据", "required": True},
+    }
+    # 填充入参用于校验
+    check_payload = {"model_id": model_id, "data": data}
+    not_valid = validate_params(check_payload, verify_dict)
+    if not_valid:
+        return jsonify(gen_json_response(code=400, msg=not_valid))
+
+    def _normalize(value):
+        # 递归规范化 Mongo 扩展JSON
+        if isinstance(value, dict):
+            # $date 处理
+            if '$date' in value and len(value) == 1:
+                v = value['$date']
+                if isinstance(v, str):
+                    try:
+                        # 兼容结尾 Z
+                        v2 = v.replace('Z', '+00:00') if 'Z' in v else v
+                        return datetime.fromisoformat(v2)
+                    except Exception:
+                        return v
+                return v
+            # $oid 处理
+            if '$oid' in value and len(value) == 1:
+                try:
+                    return ObjectId(str(value['$oid']))
+                except Exception:
+                    return value['$oid']
+            # 其他键递归
+            return {k: _normalize(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [_normalize(i) for i in value]
+        return value
+
+    try:
+        load_info = {
+            'model_id': model_id,
+            'load_type': load_type,
+            'only_fields': only_fields,
+        }
+        flag, writer = get_writer_model(load_info)
+        if not flag:
+            return jsonify(gen_json_response(code=400, msg=writer))
+
+        data_norm = _normalize(data)
+        ok, res = writer.write(data_norm)
+        if not ok:
+            return jsonify(gen_json_response(code=400, msg=res))
+
+        return jsonify(gen_json_response(data=res, msg='写入成功'))
+    except Exception as e:
+        return jsonify(gen_json_response(code=500, msg=f"写入失败：{e}"))
+
+
+@datamodel_bp.route('/dashboard/adjust-time', methods=['POST'])
+@validate_user
+@validate_permissions([])
+def adjust_device_time_to_date():
+    '''
+    维护接口：将“设备数据”记录的 update_time 统一改到指定日期（默认今天），可选按设备名称过滤，支持试运行。
+    请求参数：
+      - target_date: 字符串，目标日期，格式 YYYY-MM-DD，默认今天本地日期
+      - device_names: 数组或以逗号分隔的字符串，按设备名称过滤（与看板中的“07室环境监测”等一致）；可选
+      - limit: 每个模型处理的最大记录数（分页累计），默认 1000
+      - dry_run: 是否试运行，仅统计不落库，默认 true
+    响应：{ updated: 数量, scanned: 数量, models: [...], dry_run: bool }
+    '''
+    try:
+        req = get_req_para(request)
+        target_date_str = req.get('target_date')
+        device_names = req.get('device_names')
+        limit = int(req.get('limit') or 1000)
+        dry_run = str(req.get('dry_run', 'true')).lower() in ['true', '1', 'yes']
+
+        # 设备名过滤解析
+        if isinstance(device_names, str):
+            if device_names.strip() == '':
+                device_names = []
+            else:
+                device_names = [i.strip() for i in device_names.split(',') if i.strip()]
+        elif not isinstance(device_names, list):
+            device_names = []
+
+        # 目标日期（本地）
+        from datetime import timezone, timedelta, date
+        import os
+        tz_offset_minutes_env = os.getenv('EZDATA_TZ_OFFSET_MINUTES')
+        try:
+            tz_offset_minutes = int(tz_offset_minutes_env) if tz_offset_minutes_env is not None else 480
+        except Exception:
+            tz_offset_minutes = 480
+        tz_offset = timedelta(minutes=tz_offset_minutes)
+        if target_date_str:
+            try:
+                target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+            except Exception:
+                return jsonify(gen_json_response(code=400, msg='target_date 格式应为 YYYY-MM-DD'))
+        else:
+            target_date = date.today()
+
+        # 查找“设备”相关模型
+        svc = DataModelApiService()
+        from web_apps.datamodel.services.datamodel_query_api_service import DataModelQueryApiService
+        query_svc = DataModelQueryApiService()
+        from web_apps.datamodel.db_models import DataModel
+        from utils.etl_utils import get_writer_model
+        from bson import ObjectId
+
+        iot_models = DataModel.query.filter(
+            DataModel.del_flag == 0,
+            DataModel.status == 1,
+            DataModel.name.like('%设备%')
+        ).all()
+
+        def to_ms(v):
+            # 与服务保持一致：多格式转毫秒
+            try:
+                if isinstance(v, dict) and '$date' in v:
+                    return int(v['$date'])
+                if isinstance(v, (int, float)) or (isinstance(v, str) and str(v).isdigit()):
+                    vi = int(v)
+                    return vi * 1000 if vi < 1_000_000_000_000 else vi
+                if isinstance(v, str):
+                    s = v.strip().replace('T', ' ').split('.')[0]
+                    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y/%m/%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y/%m/%d %H:%M'):
+                        try:
+                            dt = datetime.strptime(s, fmt)
+                            return int(dt.timestamp() * 1000)
+                        except Exception:
+                            pass
+                return None
+            except Exception:
+                return None
+
+        updated = 0
+        scanned = 0
+        touched_models = []
+
+        for m in iot_models:
+            touched_models.append({'id': m.id, 'name': m.name})
+            page = 1
+            pagesize = 200
+            processed_this_model = 0
+            while processed_this_model < limit:
+                res = query_svc.query_obj_data({'id': m.id, 'page': page, 'pagesize': pagesize}, use_auth=False)
+                if res.get('code') != 200:
+                    break
+                recs = res.get('data', {}).get('records', [])
+                if not recs:
+                    break
+                for r in recs:
+                    if processed_this_model >= limit:
+                        break
+                    scanned += 1
+                    # 设备名过滤（如传感器数据使用 factor_name 作为名称）
+                    r_name = r.get('device_name') or r.get('factor_name') or r.get('name')
+                    if device_names and (r_name not in device_names):
+                        continue
+
+                    old_ms = to_ms(r.get('update_time'))
+                    if old_ms is None:
+                        continue
+                    # 将时间对齐到目标日期：保留原时分秒（本地），仅替换日期
+                    from datetime import datetime as _dt
+                    local_dt = _dt.fromtimestamp(old_ms / 1000.0)
+                    new_local_dt = _dt(
+                        year=target_date.year,
+                        month=target_date.month,
+                        day=target_date.day,
+                        hour=local_dt.hour,
+                        minute=local_dt.minute,
+                        second=local_dt.second,
+                        microsecond=0
+                    )
+                    new_ms = int(new_local_dt.timestamp() * 1000)
+
+                    if dry_run:
+                        updated += 1
+                        processed_this_model += 1
+                        continue
+
+                    load_info = {
+                        'model_id': m.id,
+                        'load_type': 'upsert',
+                        'only_fields': ['_id'],
+                    }
+                    flag, writer = get_writer_model(load_info)
+                    if not flag:
+                        return jsonify(gen_json_response(code=500, msg=f'获取writer失败: {writer}'))
+
+                    # 以 _id 匹配更新，保留原结构，替换 update_time
+                    doc = dict(r)
+                    if isinstance(doc.get('_id'), dict) and '$oid' in doc['_id']:
+                        try:
+                            doc['_id'] = ObjectId(str(doc['_id']['$oid']))
+                        except Exception:
+                            pass
+                    doc['update_time'] = {'$date': new_ms}
+
+                    ok, resw = writer.write(doc)
+                    if not ok:
+                        return jsonify(gen_json_response(code=500, msg=f'写入失败: {resw}'))
+                    updated += 1
+                    processed_this_model += 1
+
+                if len(recs) < pagesize:
+                    break
+                page += 1
+
+        return jsonify(gen_json_response(data={
+            'updated': updated,
+            'scanned': scanned,
+            'models': touched_models,
+            'dry_run': dry_run,
+            'target_date': str(target_date)
+        }, msg='ok'))
+    except Exception as e:
+        return jsonify(gen_json_response(code=500, msg=f'时间统一更新失败：{e}'))

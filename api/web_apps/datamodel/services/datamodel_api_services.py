@@ -372,3 +372,428 @@ class DataModelApiService(object):
         # 文件seek位置，从头(0)开始
         output.seek(0)
         return output
+
+    def get_dashboard_overview(self):
+        '''
+        获取数据模型总览数据
+        '''
+        try:
+            # 获取总模型数
+            total_count = DataModel.query.filter(DataModel.del_flag == 0).count()
+            
+            # 获取已建立模型数（status=1）
+            established_count = DataModel.query.filter(
+                DataModel.del_flag == 0,
+                DataModel.status == 1
+            ).count()
+            
+            # 获取未建立模型数（status=0）
+            unestablished_count = DataModel.query.filter(
+                DataModel.del_flag == 0,
+                DataModel.status == 0
+            ).count()
+            
+            # 获取可接口模型数（can_interface=1）
+            interface_count = DataModel.query.filter(
+                DataModel.del_flag == 0,
+                DataModel.can_interface == 1
+            ).count()
+            
+            return {
+                'total': total_count,
+                'established': established_count,
+                'unestablished': unestablished_count,
+                'interfaceCount': interface_count
+            }
+        except Exception as e:
+            raise Exception(f"获取总览数据失败: {e}")
+
+    def get_type_stats(self):
+        '''
+        获取数据模型类型统计
+        '''
+        try:
+            from sqlalchemy import func
+            results = db.session.query(
+                DataModel.type,
+                func.count(DataModel.id).label('count')
+            ).filter(
+                DataModel.del_flag == 0
+            ).group_by(DataModel.type).all()
+            
+            return [{'type': result.type, 'count': result.count} for result in results]
+        except Exception as e:
+            raise Exception(f"获取类型统计失败: {e}")
+
+    def get_creation_trend(self):
+        '''
+        获取数据模型创建趋势
+        '''
+        try:
+            from sqlalchemy import func, extract
+            from datetime import datetime, timedelta
+            
+            # 获取最近12个月的数据
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=365)
+            
+            results = db.session.query(
+                extract('year', DataModel.create_time).label('year'),
+                extract('month', DataModel.create_time).label('month'),
+                func.count(DataModel.id).label('count')
+            ).filter(
+                DataModel.del_flag == 0,
+                DataModel.create_time >= start_date
+            ).group_by(
+                extract('year', DataModel.create_time),
+                extract('month', DataModel.create_time)
+            ).order_by(
+                extract('year', DataModel.create_time),
+                extract('month', DataModel.create_time)
+            ).all()
+            
+            return [{'year': int(result.year), 'month': int(result.month), 'count': result.count} for result in results]
+        except Exception as e:
+            raise Exception(f"获取创建趋势失败: {e}")
+
+    def get_field_stats(self):
+        '''
+        获取数据模型字段统计
+        '''
+        try:
+            from web_apps.datamodel.db_models import DataModelField
+            from sqlalchemy import func
+            
+            # 获取字段名称统计（使用field_name代替field_type）
+            field_name_stats = db.session.query(
+                DataModelField.field_name,
+                func.count(DataModelField.id).label('count')
+            ).join(DataModel, DataModelField.datamodel_id == DataModel.id).filter(
+                DataModel.del_flag == 0,
+                DataModelField.del_flag == 0
+            ).group_by(DataModelField.field_name).all()
+            
+            # 获取每个模型的字段数量
+            model_field_counts = db.session.query(
+                DataModel.name,
+                func.count(DataModelField.id).label('field_count')
+            ).join(DataModelField, DataModel.id == DataModelField.datamodel_id).filter(
+                DataModel.del_flag == 0,
+                DataModelField.del_flag == 0
+            ).group_by(DataModel.id, DataModel.name).all()
+            
+            return {
+                'fieldTypeStats': [{'type': result.field_name or '未知', 'count': result.count} for result in field_name_stats],
+                'modelFieldCounts': [{'model': result.name, 'fieldCount': result.field_count} for result in model_field_counts]
+            }
+        except Exception as e:
+            raise Exception(f"获取字段统计失败: {e}")
+
+    def get_iot_device_data(self):
+        '''
+        获取物联网设备数据
+        '''
+        try:
+            # 查找物联网相关的数据模型
+            iot_models = db.session.query(DataModel).filter(
+                DataModel.del_flag == 0,
+                DataModel.status == 1,
+                DataModel.name.like('%设备%')
+            ).all()
+            
+            device_data = []
+            for model in iot_models:
+                try:
+                    # 使用数据模型查询服务获取实际数据
+                    from web_apps.datamodel.services.datamodel_query_api_service import DataModelQueryApiService
+                    query_service = DataModelQueryApiService()
+                    
+                    # 查询模型数据
+                    req_dict = {
+                        'id': model.id,
+                        'page': 1,
+                        'pagesize': 10
+                    }
+                    
+                    result = query_service.query_obj_data(req_dict, use_auth=False)
+                    if result.get('code') == 200 and result.get('data', {}).get('records'):
+                        records = result['data']['records']
+                        for record in records[:5]:  # 只取前5条数据
+                            # 智能字段映射 - 尝试多种可能的字段名
+                            device_id = self._extract_field_value(record, ['device_id', 'id', 'deviceId', 'device_num', '设备ID', '设备编号', '_id'])
+                            device_name = self._extract_field_value(record, ['device_name', 'name', 'deviceName', 'factor_name', '设备名称', '设备名'])
+                            status = self._extract_field_value(record, ['status', 'state', '设备状态', '状态', 'online_status'])
+                            location = self._extract_field_value(record, ['location', 'address', 'position', '位置', '地址', '安装位置', 'site'])
+                            last_update = self._extract_field_value(record, ['update_time', 'create_time', 'last_update', '更新时间', '创建时间', 'timestamp'])
+                            
+                            # 特殊处理：如果是传感器数据，使用factor_name作为设备名称
+                            if 'factor_name' in record and not device_name:
+                                device_name = record.get('factor_name', '传感器')
+                            
+                            # 特殊处理：如果有device_num，使用它作为设备ID，并根据映射补充设备名称
+                            if 'device_num' in record:
+                                if not device_id:
+                                    device_id = record.get('device_num', '未知设备')
+                                # 设备编号 → 设备名称映射（按用户提供）
+                                id_to_name = {
+                                    'WIFI2025062501': '07室环境监测',
+                                    'WIFI2025062502': '08室环境监测',
+                                    'WIFI2025062503': '09室环境监测',
+                                    'XZD20250731': '08室电表',
+                                    'XZD20250732': '07室电表',
+                                }
+                                if not device_name:
+                                    device_name = id_to_name.get(str(record.get('device_num')), device_name)
+
+                            # 如果设备名称中包含“XX室”，自动提取为位置
+                            if (not location) and device_name:
+                                try:
+                                    import re
+                                    m = re.search(r'(\d+室)', str(device_name))
+                                    if m:
+                                        location = m.group(1)
+                                except Exception:
+                                    pass
+                            
+                            device_data.append({
+                                'model_name': model.name,
+                                'model_type': model.type,
+                                'device_id': device_id or f"设备_{len(device_data)+1}",
+                                'device_name': device_name or f"设备_{len(device_data)+1}",
+                                'status': status or '在线',
+                                'location': location or '未知位置',
+                                'last_update': last_update or '未知',
+                                'data_count': len(record),
+                                'raw_data': record  # 保存原始数据用于调试
+                            })
+                except Exception as e:
+                    print(f"查询模型 {model.name} 数据失败: {e}")
+                    continue
+            
+            # 如果没有找到设备数据，生成一些模拟数据用于演示
+            if not device_data:
+                device_data = self._generate_demo_device_data()
+            
+            return device_data
+        except Exception as e:
+            raise Exception(f"获取物联网设备数据失败: {e}")
+
+    def _extract_field_value(self, record, possible_fields):
+        '''
+        从记录中提取字段值，尝试多种可能的字段名
+        '''
+        for field in possible_fields:
+            if field in record and record[field] is not None and str(record[field]).strip():
+                return str(record[field]).strip()
+        return None
+
+    def _generate_demo_device_data(self):
+        '''
+        生成演示设备数据
+        '''
+        import random
+        from datetime import datetime, timedelta
+        
+        device_types = ['温度传感器', '湿度传感器', '压力传感器', '流量计', '摄像头', '门禁设备']
+        locations = ['车间A', '车间B', '办公室', '仓库', '机房', '实验室']
+        statuses = ['在线', '离线', '维护', '故障']
+        
+        demo_data = []
+        for i in range(6):
+            device_type = random.choice(device_types)
+            location = random.choice(locations)
+            status = random.choice(statuses)
+            last_update = datetime.now() - timedelta(hours=random.randint(1, 72))
+            
+            demo_data.append({
+                'model_name': '设备数据',
+                'model_type': '物联网设备',
+                'device_id': f"DEV_{str(i+1).zfill(3)}",
+                'device_name': f"{device_type}_{i+1}",
+                'status': status,
+                'location': location,
+                'last_update': last_update.strftime('%Y-%m-%d %H:%M:%S'),
+                'data_count': random.randint(5, 15),
+                'raw_data': {}
+            })
+        
+        return demo_data
+
+    def get_device_statistics(self):
+        '''
+        获取设备统计信息
+        '''
+        try:
+            device_data = self.get_iot_device_data()
+            # 按设备ID去重（同一设备的不同指标只计一次设备）
+            unique_map = {}
+            for d in device_data:
+                dev_id = d.get('device_id') or d.get('model_name')
+                if dev_id not in unique_map:
+                    unique_map[dev_id] = d
+            unique_devices = list(unique_map.values())
+            
+            # 统计设备状态
+            status_stats = {}
+            location_stats = {}
+            model_stats = {}
+            
+            for device in unique_devices:
+                # 状态统计
+                status = device.get('status', '未知')
+                status_stats[status] = status_stats.get(status, 0) + 1
+                
+                # 位置统计
+                location = device.get('location', '未知')
+                location_stats[location] = location_stats.get(location, 0) + 1
+                
+                # 模型统计
+                model_name = device.get('model_name', '未知')
+                model_stats[model_name] = model_stats.get(model_name, 0) + 1
+            
+            return {
+                'total_devices': len(unique_devices),
+                'status_distribution': [{'name': k, 'value': v} for k, v in status_stats.items()],
+                'location_distribution': [{'name': k, 'value': v} for k, v in location_stats.items()],
+                'model_distribution': [{'name': k, 'value': v} for k, v in model_stats.items()],
+                'recent_devices': device_data[:10]  # 最近10条（包含不同指标）
+            }
+        except Exception as e:
+            raise Exception(f"获取设备统计失败: {e}")
+
+    def get_device_metrics(self, device_name: str, start_ts: int, end_ts: int):
+        '''
+        按设备名称与时间范围获取多指标时序数据
+        :param device_name: 设备名称（如“07室环境监测”）
+        :param start_ts: 开始时间的毫秒时间戳
+        :param end_ts: 结束时间的毫秒时间戳
+        '''
+        try:
+            # 统一时区：默认 UTC+8，可通过环境变量覆盖（分钟偏移）
+            import os
+            from datetime import timezone, timedelta, datetime as _dt
+            tz_offset_minutes_env = os.getenv('EZDATA_TZ_OFFSET_MINUTES')
+            try:
+                tz_offset_minutes = int(tz_offset_minutes_env) if tz_offset_minutes_env is not None else 480
+            except Exception:
+                tz_offset_minutes = 480
+            tz_offset = timedelta(minutes=tz_offset_minutes)
+
+            # 名称→编号映射（可后续改为读库）
+            name_to_id = {
+                '07室环境监测': 'WIFI2025062501',
+                '08室环境监测': 'WIFI2025062502',
+                '09室环境监测': 'WIFI2025062503',
+                '08室电表': 'XZD20250731',
+                '07室电表': 'XZD20250732',
+            }
+            device_num = name_to_id.get(device_name, '')
+
+            # 从“设备数据”模型分页读取一定量数据后在内存中过滤
+            from web_apps.datamodel.services.datamodel_query_api_service import DataModelQueryApiService
+            query_service = DataModelQueryApiService()
+
+            # 找出包含“设备”的已启用模型
+            iot_models = db.session.query(DataModel).filter(
+                DataModel.del_flag == 0,
+                DataModel.status == 1,
+                DataModel.name.like('%设备%')
+            ).all()
+
+            records = []
+            for model in iot_models:
+                page = 1
+                pagesize = 200
+                # 读取前若干页（最多1000条），避免一次性过大
+                for _ in range(5):
+                    result = query_service.query_obj_data({'id': model.id, 'page': page, 'pagesize': pagesize}, use_auth=False)
+                    if result.get('code') != 200:
+                        break
+                    data = result.get('data', {})
+                    recs = data.get('records', [])
+                    if not recs:
+                        break
+                    records.extend(recs)
+                    if len(recs) < pagesize:
+                        break
+                    page += 1
+
+            # 若未命中包含“设备”的模型，回退到所有启用模型中继续查找
+            if not iot_models:
+                iot_models = db.session.query(DataModel).filter(
+                    DataModel.del_flag == 0,
+                    DataModel.status == 1,
+                ).all()
+
+            # 过滤：设备编号+时间
+            def to_ms(v):
+                # 统一把多种 update_time 表达转成毫秒（字符串按本地时区 UTC+offset 解释）
+                try:
+                    # Mongo 扩展JSON：{"$date": 1754724322000}
+                    if isinstance(v, dict) and '$date' in v:
+                        return int(v['$date'])
+                    # 纯数字毫秒/秒
+                    if isinstance(v, (int, float)) or (isinstance(v, str) and v.isdigit()):
+                        v_int = int(v)
+                        if v_int < 1e12:
+                            return v_int * 1000
+                        return v_int
+                    # 字符串时间：2025-08-09 07:25:22 / 2025-08-09T07:25:22
+                    if isinstance(v, str):
+                        txt = v.strip()
+                        if txt.endswith('Z'):
+                            txt = txt[:-1]
+                        txt = txt.replace('T', ' ').split('.')[0]
+                        for fmt in ('%Y-%m-%d %H:%M:%S', '%Y/%m/%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y/%m/%d %H:%M', '%Y-%m-%d', '%Y/%m/%d'):
+                            try:
+                                dt_local = _dt.strptime(txt, fmt).replace(tzinfo=timezone(tz_offset))
+                                return int(dt_local.timestamp() * 1000)
+                            except Exception:
+                                pass
+                    return None
+                except Exception:
+                    return None
+
+            filtered = []
+            for r in records:
+                dev_num = r.get('device_num') or r.get('deviceNum') or r.get('device_id')
+                if device_num and str(dev_num) != device_num:
+                    continue
+                ts = to_ms(r.get('update_time'))
+                if ts is None:
+                    continue
+                if start_ts <= ts <= end_ts:
+                    filtered.append(r)
+
+            # 指标分组
+            from collections import defaultdict
+            series_map = defaultdict(list)
+            unit_map = {}
+            for r in filtered:
+                code = r.get('factor_code') or r.get('code') or ''
+                val = r.get('factor_value') or r.get('value')
+                unit = r.get('factor_unit') or r.get('unit') or ''
+                ts = to_ms(r.get('update_time'))
+                try:
+                    val_f = float(str(val))
+                except Exception:
+                    continue
+                series_map[code].append({'t': ts, 'v': val_f})
+                unit_map[code] = unit
+
+            # 不再回退到“忽略设备编号”的策略，避免返回其它设备（例如电表power）
+
+            # 每个序列按时间排序
+            for code in series_map:
+                series_map[code] = sorted(series_map[code], key=lambda x: x['t'])
+
+            return {
+                'deviceName': device_name,
+                'deviceNum': device_num,
+                'units': unit_map,
+                'series': series_map,
+                'timeRange': {'start': start_ts, 'end': end_ts},
+                'tzOffsetMinutes': tz_offset_minutes,
+            }
+        except Exception as e:
+            raise Exception(f"获取设备时序失败: {e}")

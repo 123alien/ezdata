@@ -31,6 +31,15 @@ const dashboard: AppRouteModule = {
         title: t('routes.dashboard.workbench'),
       },
     },
+    {
+      path: 'datamodel',
+      name: 'DataModelDashboard',
+      component: () => import('/@/views/dashboard/DataModelDashboard/index.vue'),
+      meta: {
+        title: '数据模型看板',
+        icon: 'ion:bar-chart-outline',
+      },
+    },
   ],
 };
 

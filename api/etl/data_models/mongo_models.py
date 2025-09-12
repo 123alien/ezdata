@@ -2,6 +2,7 @@ import json
 import mongoengine
 from etl.data_models import DataModel
 from etl.utils.common_utils import trans_rule_value, gen_json_response, parse_json
+from datetime import datetime, timezone
 
 
 class MongoModel(DataModel):
@@ -256,7 +257,7 @@ mongodb
         data_li = []
         for obj in obj_list:
             dic = json.loads(obj.to_json())
-            data_li.append(dic)
+            data_li.append(self._normalize_bson(dic))
         res_data = {
             'records': data_li,
             'total': total
@@ -287,12 +288,42 @@ mongodb
             data_li = []
             for obj in obj_list:
                 dic = json.loads(obj.to_json())
-                data_li.append(dic)
+                data_li.append(self._normalize_bson(dic))
             res_data = {
                 'records': data_li,
                 'total': total
             }
             yield True, gen_json_response(res_data)
+
+    def _normalize_bson(self, value):
+        '''
+        递归将Mongo扩展JSON转换为可读字符串：
+        - {"$date": 1754724330000} -> 'YYYY-MM-DD HH:MM:SS'
+        - {"$oid": "..."} -> '...'
+        - 其他嵌套结构递归处理
+        '''
+        if isinstance(value, dict):
+            if '$date' in value and len(value) == 1:
+                v = value['$date']
+                # 兼容毫秒/秒/ISO字符串
+                try:
+                    if isinstance(v, (int, float)):
+                        ts = v / 1000.0 if v > 1e12 else float(v)
+                        return datetime.fromtimestamp(ts, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+                    if isinstance(v, str):
+                        try:
+                            dt = datetime.fromisoformat(v.replace('Z', '+00:00'))
+                            return dt.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+                        except Exception:
+                            return v
+                except Exception:
+                    return v
+            if '$oid' in value and len(value) == 1:
+                return str(value['$oid'])
+            return {k: self._normalize_bson(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self._normalize_bson(i) for i in value]
+        return value
 
     def write(self, res_data):
         self.load_type = self._load_info.get('load_type', '')
