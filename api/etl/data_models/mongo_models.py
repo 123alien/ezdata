@@ -11,20 +11,39 @@ class MongoModel(DataModel):
         super().__init__(model_info)
         conn_conf = self._source['conn_conf']
         model_conf = self._model.get('model_conf', {})
-        conn_url = f"mongodb://{conn_conf.get('username')}:{conn_conf.get('password')}@{conn_conf.get('host')}:{conn_conf.get('port')}"
-        # 认证库（authSource），优先取传入的auth_db/authSource，否则默认admin
-        auth_db = conn_conf.get('auth_db') or conn_conf.get('authSource') or conn_conf.get('authenticationDatabase') or 'admin'
+        # 构建连接URL，支持无认证连接
+        username = conn_conf.get('username', '')
+        password = conn_conf.get('password', '')
+        
+        if username and password:
+            # 有认证信息时使用认证连接
+            conn_url = f"mongodb://{username}:{password}@{conn_conf.get('host')}:{conn_conf.get('port')}"
+            auth_db = conn_conf.get('auth_db') or conn_conf.get('authSource') or conn_conf.get('authenticationDatabase') or 'admin'
+        else:
+            # 无认证信息时使用简单连接
+            conn_url = f"mongodb://{conn_conf.get('host')}:{conn_conf.get('port')}"
+            auth_db = None
+            
         # 避免已存在的默认连接导致报错：A different connection with alias `default` was already registered
         try:
             mongoengine.disconnect(alias='default')
         except Exception:
             pass
-        self.conn = mongoengine.connect(
-            host=conn_url,
-            db=conn_conf.get('database_name'),
-            alias='default',
-            authentication_source=auth_db
-        )
+            
+        # 根据是否有认证信息选择连接方式
+        if auth_db:
+            self.conn = mongoengine.connect(
+                host=conn_url,
+                db=conn_conf.get('database_name'),
+                alias='default',
+                authentication_source=auth_db
+            )
+        else:
+            self.conn = mongoengine.connect(
+                host=conn_url,
+                db=conn_conf.get('database_name'),
+                alias='default'
+            )
         self.collection = model_conf.get('name', '')
         if self.collection != '':
             class Model(mongoengine.DynamicDocument):

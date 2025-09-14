@@ -21,8 +21,8 @@ CRON_TIMES = os.getenv("IOT_CRON_TIMES", "").strip()  # 逗号分隔，如 "08:0
 
 MONGO_HOST = os.getenv("MONGO_HOST", "localhost")
 MONGO_PORT = int(os.getenv("MONGO_PORT", "27017"))
-MONGO_USERNAME = os.getenv("MONGO_USERNAME", "")
-MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "")
+MONGO_USERNAME = os.getenv("MONGO_USERNAME", "admin")
+MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "admin123")
 MONGO_DB = os.getenv("MONGO_DB", "ezdata")
 MONGO_AUTH_SOURCE = os.getenv("MONGO_AUTH_SOURCE", "admin")
 
@@ -113,7 +113,7 @@ def persist_one(data: Dict[str, Any], device_num: str, db) -> bool:
         "latitude": rec.get("latitude"),
         "is_online": rec.get("isOnLine"),
         "address": rec.get("address"),
-        "update_time": to_dt(rec.get("updatetime")),
+        "update_time": to_dt(rec.get("savetime")),
         "raw_json": data,
         "created_at": datetime.now(),
     }
