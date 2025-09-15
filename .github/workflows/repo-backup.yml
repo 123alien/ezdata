@@ -1,0 +1,50 @@
+name: repo-nightly-backup
+
+on:
+  schedule:
+    # 每天 02:00 (Asia/Shanghai) 运行（18:00 UTC）
+    - cron: '0 18 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  bundle-and-artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create git bundle
+        run: |
+          ts=$(date +%Y%m%d-%H%M%S)
+          git bundle create ezdata-master-${ts}.bundle --all
+          echo "BUNDLE=ezdata-master-${ts}.bundle" >> $GITHUB_ENV
+
+      - name: Upload bundle to Actions artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-bundle
+          path: ${{ env.BUNDLE }}
+          retention-days: 30
+
+  mirror-to-backup-remote:
+    if: ${{ secrets.BACKUP_REPO != '' && secrets.BACKUP_TOKEN != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push mirror to backup repo
+        env:
+          BACKUP_REPO: ${{ secrets.BACKUP_REPO }}
+          BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
+        run: |
+          git remote add backup https://x-access-token:${BACKUP_TOKEN}@${BACKUP_REPO}
+          git push --mirror backup
+
