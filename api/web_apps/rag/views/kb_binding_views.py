@@ -44,9 +44,13 @@ def get_binding():
         if not kb_service.has_permission(kb_id, current_user.get('userId'), 'read'):
             return gen_json_response(code=403, msg='无权限访问此知识库')
         
-        # 查询绑定信息
+        # 兼容按 dataset(UUID) 绑定或按 KB 主键绑定
+        is_uuid_like = isinstance(kb_id, str) and len(kb_id) >= 32
+        store_kb_id = kb_id if is_uuid_like else kb.id
+
+        # 查询绑定信息（按实际落库的 kb_id 查询）
         binding = db.session.query(KnowledgeBaseBinding).filter(
-            KnowledgeBaseBinding.kb_id == kb.id,
+            KnowledgeBaseBinding.kb_id == store_kb_id,
             KnowledgeBaseBinding.del_flag == 0
         ).first()
         
@@ -104,33 +108,38 @@ def create_or_update_binding():
         if not kb_service.has_permission(kb_id, current_user.get('userId'), 'write'):
             return gen_json_response(code=403, msg='无权限修改此知识库')
         
-        # 检查namespace是否已被其他知识库使用
+        # 绑定粒度：优先以 dataset(UUID) 为唯一键，避免同一用户不同数据集产生误判
+        from re import fullmatch
+        is_uuid_like = isinstance(kb_id, str) and len(kb_id) >= 32
+        store_kb_id = kb_id if is_uuid_like else kb.id
+
+        # 检查namespace是否已被其他知识库使用（仅检查有效记录）
         existing_binding = db.session.query(KnowledgeBaseBinding).filter(
             KnowledgeBaseBinding.namespace == namespace,
-            KnowledgeBaseBinding.kb_id != kb.id,
+            KnowledgeBaseBinding.kb_id != store_kb_id,
             KnowledgeBaseBinding.del_flag == 0
         ).first()
         
         if existing_binding:
             return gen_json_response(code=400, msg='该namespace已被其他知识库使用')
         
-        # 查找现有绑定
+        # 查找是否已经存在该 KB/dataset 的绑定（包含已软删除的记录，避免唯一键冲突）
         binding = db.session.query(KnowledgeBaseBinding).filter(
-            KnowledgeBaseBinding.kb_id == kb.id,
-            KnowledgeBaseBinding.del_flag == 0
+            KnowledgeBaseBinding.kb_id == store_kb_id
         ).first()
         
         if binding:
-            # 更新现有绑定
+            # 更新已有记录（若之前被软删则恢复）
             binding.namespace = namespace
             binding.remark = remark
             binding.update_by = current_user.get('username')
+            binding.del_flag = 0
             db.session.commit()
             message = '绑定信息更新成功'
         else:
             # 创建新绑定
             binding = KnowledgeBaseBinding(
-                kb_id=kb.id,
+                kb_id=store_kb_id,
                 namespace=namespace,
                 remark=remark,
                 create_by=current_user.get('username')
@@ -150,7 +159,7 @@ def create_or_update_binding():
         db.session.rollback()
         return gen_json_response(code=500, msg=f'绑定操作失败: {str(e)}')
 
-@kb_binding_bp.route('/binding/<int:kb_id>', methods=['DELETE'])
+@kb_binding_bp.route('/binding/<kb_id>', methods=['DELETE'])
 @validate_user
 def delete_binding(kb_id):
     """删除知识库绑定"""
@@ -160,14 +169,23 @@ def delete_binding(kb_id):
             return gen_json_response(code=401, msg='用户未登录')
         
         kb_service = KnowledgeBaseService()
-        
-        # 检查权限
-        if not kb_service.has_permission(kb_id, current_user.get('userId'), 'write'):
+
+        # 将传入的 kb_id 兼容为“真实的 KB 主键ID”
+        resolved_kb = kb_service.get_knowledge_base_by_id(kb_id)
+        if not resolved_kb:
+            return gen_json_response(code=404, msg='知识库不存在')
+
+        # 权限校验基于真实 KB
+        if not kb_service.has_permission(resolved_kb.id, current_user.get('userId'), 'write'):
             return gen_json_response(code=403, msg='无权限修改此知识库')
-        
-        # 查找并删除绑定
+
+        # 与创建/查询保持一致：若传入的是 dataset(UUID) 则按 UUID 存/查/删
+        is_uuid_like = isinstance(kb_id, str) and len(kb_id) >= 32
+        store_kb_id = kb_id if is_uuid_like else resolved_kb.id
+
+        # 查找并删除绑定（按实际落库的 kb_id 查询）
         binding = db.session.query(KnowledgeBaseBinding).filter(
-            KnowledgeBaseBinding.kb_id == kb_id,
+            KnowledgeBaseBinding.kb_id == store_kb_id,
             KnowledgeBaseBinding.del_flag == 0
         ).first()
         

@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS `rag_kb_share_permission` (
     `permission_level` VARCHAR(50) DEFAULT 'read' COMMENT '权限级别 (read, write, admin)',
     `status` SMALLINT DEFAULT 1 COMMENT '分享状态 (1: 有效, 0: 失效)',
     `tenant_id` INT DEFAULT 1 COMMENT '租户id',
+    `description` TEXT DEFAULT '' COMMENT '简介',
     `sort_no` FLOAT DEFAULT 1 COMMENT '排序',
     `del_flag` SMALLINT DEFAULT 0 COMMENT '软删除标记',
     `create_by` VARCHAR(100) DEFAULT '' COMMENT '创建者',

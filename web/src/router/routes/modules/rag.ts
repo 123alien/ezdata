@@ -8,9 +8,9 @@ const rag: AppRouteModule = {
   redirect: '/rag/external',
   meta: {
     orderNo: 10,
-    icon: 'ion:cloud-outline',
-    title: 'TrustRAG 外部服务',
-    hideChildrenInMenu: true, // 隐藏子菜单，只显示主菜单
+    icon: 'ion:library-outline',
+    title: 'RAG 知识库',
+    hideChildrenInMenu: false, // 显示子菜单
   },
   children: [
     {
@@ -69,6 +69,8 @@ const rag: AppRouteModule = {
           component: () => import('/@/views/rag/knowledge-base/shared/index.vue'),
           meta: {
             title: '共享给我的',
+            icon: 'ion:people',
+            hideMenu: false,
           },
         },
         {

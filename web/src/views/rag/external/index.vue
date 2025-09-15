@@ -277,8 +277,8 @@ const askQuickQuestion = async () => {
       },
       body: JSON.stringify({
         message: quickQuestion.value,
-        dataset_id: selectedDatasetId.value || undefined,
-        namespace: namespace.value || undefined,
+        dataset_id: selectedDatasetId.value || null,
+        namespace: namespace.value || null,
         mode,
       }),
     });
@@ -292,7 +292,7 @@ const askQuickQuestion = async () => {
 
   // 降级走后端（代理）
   try {
-    const result = await askQuestion(quickQuestion.value, selectedDatasetId.value || undefined, namespace.value || undefined);
+    const result = await askQuestion(quickQuestion.value, selectedDatasetId.value || null, namespace.value || null);
     if (result.code === 200) {
       if (result.data && result.data.result && result.data.result.response) {
         quickAnswer.value = result.data.result.response;

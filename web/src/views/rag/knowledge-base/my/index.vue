@@ -28,6 +28,12 @@
           </a-tag>
         </template>
         
+        <template v-else-if="column.key === 'binding_status'">
+          <a-tag :color="record.binding_status ? 'blue' : 'default'">
+            {{ record.binding_status ? `已绑定 (${record.binding_namespace})` : '未绑定' }}
+          </a-tag>
+        </template>
+        
         <template v-else-if="column.key === 'action'">
           <a-space>
             <a @click="viewDataset(record)">查看</a>
@@ -213,6 +219,7 @@ const columns = [
   { title: '知识库名称', dataIndex: 'name', key: 'name', width: 200 },
   { title: '描述', dataIndex: 'description', key: 'description', ellipsis: true },
   { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
+  { title: '绑定状态', dataIndex: 'binding_status', key: 'binding_status', width: 120 },
   { title: '创建时间', dataIndex: 'create_time', key: 'create_time', width: 180 },
   { title: '操作', key: 'action', width: 300, fixed: 'right' },
 ];
@@ -261,6 +268,9 @@ const fetchDatasetList = async () => {
       datasetList.value = response.data?.records || [];
       pagination.total = response.data?.total || 0;
       console.log('设置数据完成，记录数:', datasetList.value.length);
+      
+      // 为每个知识库获取绑定信息
+      await loadBindingInfo();
     } else {
       console.log('API调用失败，状态码:', response?.code, '消息:', response?.msg);
       message.error(response?.msg || '获取知识库列表失败');
@@ -270,6 +280,32 @@ const fetchDatasetList = async () => {
     message.error('获取知识库列表失败');
   } finally {
     loading.value = false;
+  }
+};
+
+// 加载绑定信息
+const loadBindingInfo = async () => {
+  try {
+    const { getKnowledgeBaseBinding } = await import('/@/api/rag/kb-binding.api');
+    
+    for (const dataset of datasetList.value) {
+      try {
+        const bindingResponse = await getKnowledgeBaseBinding({ kid: dataset.id });
+        if (bindingResponse && bindingResponse.code === 200 && bindingResponse.data) {
+          dataset.binding_status = true;
+          dataset.binding_namespace = bindingResponse.data.namespace;
+        } else {
+          dataset.binding_status = false;
+          dataset.binding_namespace = null;
+        }
+      } catch (error) {
+        console.warn(`获取知识库 ${dataset.id} 绑定信息失败:`, error);
+        dataset.binding_status = false;
+        dataset.binding_namespace = null;
+      }
+    }
+  } catch (error) {
+    console.error('加载绑定信息失败:', error);
   }
 };
 
@@ -513,7 +549,8 @@ const showBindingModal = (record: any) => {
 // 绑定成功回调
 const handleBindingSuccess = () => {
   message.success('绑定操作成功');
-  // 可以在这里刷新知识库列表或做其他操作
+  // 刷新知识库列表
+  fetchDatasetList();
 };
 </script>
 

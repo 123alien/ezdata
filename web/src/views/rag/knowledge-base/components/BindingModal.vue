@@ -8,6 +8,7 @@
     :confirm-loading="loading"
   >
     <a-form
+      :key="formKey"
       ref="formRef"
       :model="formData"
       :rules="rules"
@@ -92,6 +93,7 @@ const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
 
 const formRef = ref();
+const formKey = ref(0);
 const loading = ref(false);
 const deleteLoading = ref(false);
 
@@ -127,17 +129,39 @@ watch(
       // 加载现有绑定信息
       try {
         const res: any = await getKnowledgeBaseBinding({ kid: props.kbData.id });
+        console.log('加载绑定信息响应:', res);
         if (res && res.code === 200 && res.data) {
           formData.id = res.data.id;
           formData.namespace = res.data.namespace;
           formData.remark = res.data.remark || '';
+          console.log('绑定信息加载成功:', formData);
         } else {
+          // 绑定不存在或加载失败，清空数据并重置表单
           formData.id = undefined;
           formData.namespace = '';
           formData.remark = '';
+          formKey.value++;
+          if (formRef.value) {
+            try {
+              formRef.value.resetFields();
+              formRef.value.setFieldsValue?.({ namespace: '', remark: '' });
+            } catch (e) {}
+          }
+          console.log('绑定信息不存在，已清空数据');
         }
       } catch (error) {
         console.error('加载绑定信息失败:', error);
+        // 加载失败时也清空数据并重置表单
+        formData.id = undefined;
+        formData.namespace = '';
+        formData.remark = '';
+        formKey.value++;
+        if (formRef.value) {
+          try {
+            formRef.value.resetFields();
+            formRef.value.setFieldsValue?.({ namespace: '', remark: '' });
+          } catch (e) {}
+        }
         message.error('加载绑定信息失败');
       }
     }
@@ -178,11 +202,24 @@ const handleDelete = async () => {
     deleteLoading.value = true;
     
     const res: any = await deleteKnowledgeBaseBinding(formData.kb_id);
+    console.log('删除绑定响应:', res);
     
     if (res && res.code === 200) {
       message.success(res.msg || '删除成功');
+      // 清空绑定数据，但不关闭弹窗
+      formData.id = undefined;
+      formData.namespace = '';
+      formData.remark = '';
+      formKey.value++;
+      if (formRef.value) {
+        try {
+          formRef.value.resetFields();
+          formRef.value.setFieldsValue?.({ namespace: '', remark: '' });
+        } catch (e) {}
+      }
+      console.log('删除成功，已清空表单数据:', formData);
       emit('success');
-      handleCancel();
+      // 不调用 handleCancel()，让用户看到清空后的状态
     } else {
       message.error(res?.msg || '删除失败');
     }

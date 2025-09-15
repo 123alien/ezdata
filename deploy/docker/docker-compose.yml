@@ -151,6 +151,8 @@ services:
     ports:
       - '9200:9200'
       - '9300:9300'
+    volumes:
+      - ./elasticsearch/data:/usr/share/elasticsearch/data
     networks:
       ezdata:
         ipv4_address: 10.233.31.6

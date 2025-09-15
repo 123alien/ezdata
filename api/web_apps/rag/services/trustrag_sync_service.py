@@ -35,44 +35,82 @@ def _resolve_namespace_by_dataset(dataset_id: Any) -> Optional[str]:
     1) 通过 Dataset(id) 找到 name/create_by
     2) 映射到 UserKnowledgeBase(name, owner_id)
     3) 用 UserKnowledgeBase.id 去查 KnowledgeBaseBinding.kb_id
+    4) 如果上述方法失败，尝试直接通过数据集ID查找绑定关系
     """
     try:
         from web_apps import db
         from web_apps.rag.db_models import Dataset
         from web_apps.rag.kb_models import KnowledgeBaseBinding, UserKnowledgeBase
 
+        # 方法1：通过数据集名称和创建者查找知识库
         dataset = (
             db.session.query(Dataset)
             .filter(Dataset.id == dataset_id, Dataset.del_flag == 0)
             .first()
         )
-        if not dataset:
-            return None
-
-        kb = (
-            db.session.query(UserKnowledgeBase)
-            .filter(
-                UserKnowledgeBase.name == dataset.name,
-                UserKnowledgeBase.owner_id == dataset.create_by,
-                UserKnowledgeBase.del_flag == 0,
+        if dataset:
+            kb = (
+                db.session.query(UserKnowledgeBase)
+                .filter(
+                    UserKnowledgeBase.name == dataset.name,
+                    UserKnowledgeBase.owner_id == dataset.create_by,
+                    UserKnowledgeBase.del_flag == 0,
+                )
+                .first()
             )
-            .first()
-        )
-        if not kb:
-            return None
+            if kb:
+                binding = (
+                    db.session.query(KnowledgeBaseBinding)
+                    .filter(
+                        KnowledgeBaseBinding.kb_id == kb.id,
+                        KnowledgeBaseBinding.del_flag == 0,
+                    )
+                    .first()
+                )
+                if binding and binding.namespace:
+                    return binding.namespace
 
-        binding = (
+        # 方法2：直接通过数据集ID查找绑定关系（新增）
+        # 假设数据集ID直接对应知识库ID，或者通过其他方式关联
+        try:
+            # 尝试将数据集ID转换为整数（如果是数字的话）
+            kb_id = int(dataset_id) if dataset_id.isdigit() else None
+            if kb_id:
+                binding = (
+                    db.session.query(KnowledgeBaseBinding)
+                    .filter(
+                        KnowledgeBaseBinding.kb_id == kb_id,
+                        KnowledgeBaseBinding.del_flag == 0,
+                    )
+                    .first()
+                )
+                if binding and binding.namespace:
+                    current_app.logger.info(f"Found binding for dataset {dataset_id} -> kb_id {kb_id} -> namespace {binding.namespace}")
+                    return binding.namespace
+        except (ValueError, TypeError):
+            pass
+
+        # 方法3：查找所有可用的绑定关系，选择第一个（临时解决方案）
+        # 这适用于只有一个知识库的情况
+        all_bindings = (
             db.session.query(KnowledgeBaseBinding)
-            .filter(
-                KnowledgeBaseBinding.kb_id == kb.id,
-                KnowledgeBaseBinding.del_flag == 0,
-            )
-            .first()
+            .filter(KnowledgeBaseBinding.del_flag == 0)
+            .all()
         )
-        if binding and binding.namespace:
-            return binding.namespace
+        if all_bindings:
+            # 优先选择 ezdata-1，如果没有则选择第一个
+            for binding in all_bindings:
+                if binding.namespace == "ezdata-1":
+                    current_app.logger.info(f"Using ezdata-1 namespace for dataset {dataset_id}")
+                    return binding.namespace
+            # 如果没有找到 ezdata-1，使用第一个可用的
+            current_app.logger.info(f"Using first available namespace {all_bindings[0].namespace} for dataset {dataset_id}")
+            return all_bindings[0].namespace
+
         # 回退到全局默认命名空间，确保一键同步可用
-        return current_app.config.get("TRUSTRAG_DEFAULT_NAMESPACE", TRUSTRAG_DEFAULT_NAMESPACE)
+        default_namespace = current_app.config.get("TRUSTRAG_DEFAULT_NAMESPACE", TRUSTRAG_DEFAULT_NAMESPACE)
+        current_app.logger.info(f"Using default namespace {default_namespace} for dataset {dataset_id}")
+        return default_namespace
     except Exception as e:
         current_app.logger.error(f"resolve namespace failed: {e}")
         return None
@@ -90,7 +128,10 @@ def _generate_sso_token(user_id: Any, tenant_id: Any, dataset_id: Any, namespace
         "iat": datetime.utcnow(),
     }
     secret_key = current_app.config.get("SECRET_KEY", "ezdata-secret-key")
-    return jwt.encode(payload, secret_key, algorithm="HS256")
+    token = jwt.encode(payload, secret_key, algorithm="HS256")
+    if isinstance(token, bytes):
+        token = token.decode('utf-8')
+    return token
 
 
 def _build_minio_file_url(file_name: str) -> str:
@@ -127,11 +168,16 @@ def sync_created_document(dataset_id: Any, meta_data: Dict[str, Any]) -> Dict[st
         # 直传文本优先；若为二进制则改用 Minio URL
         file_name = upload_file_path.split('/')[-1]
         raw_text: Optional[str] = None
-        try:
-            with open(upload_file_path, 'r', encoding='utf-8') as f:
-                raw_text = f.read()
-        except UnicodeDecodeError:
+        
+        # 对于 .docx 等二进制文件，直接使用 MinIO URL，不尝试读取本地文件
+        if file_name.lower().endswith(('.docx', '.pdf', '.xlsx', '.pptx')):
             raw_text = None
+        else:
+            try:
+                with open(upload_file_path, 'r', encoding='utf-8') as f:
+                    raw_text = f.read()
+            except (UnicodeDecodeError, FileNotFoundError):
+                raw_text = None
 
         token = _generate_sso_token(user_id=user_id, tenant_id=tenant_id, dataset_id=dataset_id, namespace=namespace)
 

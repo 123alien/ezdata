@@ -3,8 +3,8 @@ import { ContentTypeEnum } from '/@/enums/httpEnum';
 
 enum Api {
   // SSO Token 相关
-  GenerateSSOToken = '/api/rag/external/sso_token',
-  AskQuestion = '/api/rag/external/ask',
+  GenerateSSOToken = '/rag/external/sso_token',
+  AskQuestion = '/rag/external/ask',
   
   // TrustRAG 直接访问
   TrustRAGHealth = '/trustrag/health',
@@ -26,7 +26,7 @@ export function generateSSOToken(dataset_id?: string, namespace?: string) {
       url: Api.GenerateSSOToken,
       data: { dataset_id, namespace },
     },
-    { joinPrefix: false, isTransformResponse: false }
+    { joinPrefix: true, isTransformResponse: false }
   );
 }
 
@@ -42,7 +42,7 @@ export function askQuestion(question: string, dataset_id?: string, namespace?: s
       url: Api.AskQuestion,
       data: { question, dataset_id, namespace },
     },
-    { joinPrefix: false, isTransformResponse: false }
+    { joinPrefix: true, isTransformResponse: false }
   );
 }
 
