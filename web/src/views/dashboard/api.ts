@@ -4,6 +4,7 @@ enum Api {
   datamodelOverview = '/datamodel/dashboard/overview',
   datamodelTypeStats = '/datamodel/dashboard/type-stats',
   datamodelTrend = '/datamodel/dashboard/trend',
+  datamodelDataflow = '/datamodel/dashboard/dataflow',
   datamodelFieldStats = '/datamodel/dashboard/field-stats',
   iotDevices = '/datamodel/dashboard/iot-devices',
   deviceStats = '/datamodel/dashboard/device-stats',
@@ -24,6 +25,11 @@ export const getDataModelTypeStats = (params?) => defHttp.get({ url: Api.datamod
  * 获取数据模型创建趋势
  */
 export const getDataModelCreationTrend = (params?) => defHttp.get({ url: Api.datamodelTrend, params });
+
+/**
+ * 获取数据流向（桑基图）
+ */
+export const getDataModelDataflow = (params?) => defHttp.get({ url: Api.datamodelDataflow, params });
 
 /**
  * 获取数据模型字段统计

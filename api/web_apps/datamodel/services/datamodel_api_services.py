@@ -771,7 +771,10 @@ class DataModelApiService(object):
             unit_map = {}
             for r in filtered:
                 code = r.get('factor_code') or r.get('code') or ''
-                val = r.get('factor_value') or r.get('value')
+                # 注意：不能用 “or” 读取数值，否则 0 会被当作假值丢弃
+                val = r.get('factor_value')
+                if val is None:
+                    val = r.get('value')
                 unit = r.get('factor_unit') or r.get('unit') or ''
                 ts = to_ms(r.get('update_time'))
                 try:

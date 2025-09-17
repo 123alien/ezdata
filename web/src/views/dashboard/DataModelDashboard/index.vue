@@ -8,14 +8,36 @@
       <a-col :span="6"><a-card><a-statistic title="可接口" :value="overviewData.interfaceCount" /></a-card></a-col>
     </a-row>
 
-    <!-- 模型分布与趋势 -->
-    <a-card title="数据模型分布" class="mb-4">
-      <a-row :gutter="16">
-        <a-col :span="8"><div ref="typeChartRef" class="chart"></div></a-col>
-        <a-col :span="8"><div ref="statusChartRef" class="chart"></div></a-col>
-        <a-col :span="8"><div ref="trendChartRef" class="chart"></div></a-col>
+    <!-- 数据模型分布概览 -->
+    <a-card title="数据模型分布概览" class="mb-4">
+      <!-- 图表区域 -->
+      <a-row :gutter="16" class="mb-4">
+        <a-col :span="8">
+          <div class="chart-container">
+            <div class="chart-title">类型分布</div>
+            <div ref="typeChartRef" class="chart"></div>
+          </div>
+        </a-col>
+        <a-col :span="8">
+          <div class="chart-container">
+            <div class="chart-title">状态分布</div>
+            <div ref="statusChartRef" class="chart"></div>
+          </div>
+        </a-col>
+        <a-col :span="8">
+          <div class="chart-container">
+            <div class="chart-title">创建趋势</div>
+            <div ref="trendChartRef" class="chart"></div>
+          </div>
+        </a-col>
       </a-row>
+      
+      <!-- 数据流向图（移动至此） -->
+      <DataFlowSankey title="数据流向图" />
     </a-card>
+
+    <!-- 金融数据（AkShare 股票K线） -->
+    <StockKlineCard class="mb-4" />
 
     <!-- 物联网设备概览与多指标折线图（单轴） -->
     <a-card title="物联网设备概览" class="mb-4">
@@ -58,7 +80,9 @@ import { ref, onMounted, type Ref, computed } from 'vue';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useECharts } from '/@/hooks/web/useECharts';
 import { useMessage } from '/@/hooks/web/useMessage';
-import { getDataModelOverview, getDataModelTypeStats, getDataModelCreationTrend, getDeviceStats, getDeviceMetrics } from '../api';
+import { getDataModelOverview, getDataModelTypeStats, getDataModelCreationTrend, getDataModelDataflow, getDeviceStats, getDeviceMetrics } from '../api';
+import StockKlineCard from '/@/views/dataManage/dataModel/components/StockKlineCard.vue';
+import DataFlowSankey from '../components/DataFlowSankey.vue';
 
 const { createMessage } = useMessage();
 
@@ -110,25 +134,131 @@ function onQuickRangeChange(val: string) {
   fetchAndRenderDeviceMetrics();
 }
 
+// （删除）表格与日期格式化相关逻辑
+
 // renderers
 function renderModelCharts(typeStats: any[], trend: any[]) {
+  // 类型分布 - 饼图
   const typeData = (typeStats || []).map((i) => ({ name: i.type, value: i.count }));
-  setTypeChart({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: '60%', data: typeData }] });
+  setTypeChart({ 
+    tooltip: { 
+      trigger: 'item',
+      formatter: '{a} <br/>{b}: {c} ({d}%)'
+    }, 
+    legend: {
+      orient: 'vertical',
+      left: 'left',
+      top: 'middle'
+    },
+    series: [{ 
+      type: 'pie', 
+      radius: ['40%', '70%'], 
+      center: ['60%', '50%'],
+      data: typeData,
+      emphasis: {
+        itemStyle: {
+          shadowBlur: 10,
+          shadowOffsetX: 0,
+          shadowColor: 'rgba(0, 0, 0, 0.5)'
+        }
+      }
+    }] 
+  });
 
+  // 状态分布 - 环形图
   const statusData = [
     { name: '已建立', value: overviewData.value.establishedCount },
     { name: '未建立', value: overviewData.value.unestablishedCount },
   ];
-  setStatusChart({ tooltip: { trigger: 'item' }, series: [{ type: 'pie', radius: '60%', data: statusData }] });
+  const totalStatus = statusData.reduce((sum, item) => sum + item.value, 0);
+  setStatusChart({ 
+    tooltip: { 
+      trigger: 'item',
+      formatter: '{a} <br/>{b}: {c} ({d}%)'
+    },
+    legend: {
+      orient: 'vertical',
+      left: 'left',
+      top: 'middle'
+    },
+    series: [{ 
+      type: 'pie', 
+      radius: ['50%', '70%'],
+      center: ['60%', '50%'],
+      data: statusData,
+      label: {
+        show: true,
+        formatter: '{b}\n{d}%'
+      },
+      labelLine: {
+        show: true
+      }
+    }],
+    graphic: {
+      type: 'text',
+      left: 'center',
+      top: 'center',
+      style: {
+        text: totalStatus.toString(),
+        fill: '#333',
+        fontSize: 20,
+        fontWeight: 'bold'
+      }
+    }
+  });
 
-  const trendX = (trend || []).map((i) => i.date);
+  // 创建趋势 - 面积图
+  const trendX = (trend || []).map((i) => {
+    if (i.year && i.month) {
+      return `${i.year}-${String(i.month).padStart(2, '0')}`;
+    }
+    return i.date || `${i.year}-${i.month}`;
+  });
   const trendY = (trend || []).map((i) => i.count);
   setTrendChart({
-    tooltip: { trigger: 'axis' },
-    xAxis: { type: 'category', data: trendX },
-    yAxis: { type: 'value' },
-    grid: { left: 28, right: 8, top: 24, bottom: 20 },
-    series: [{ type: 'line', smooth: true, showSymbol: false, data: trendY }],
+    tooltip: { 
+      trigger: 'axis',
+      axisPointer: {
+        type: 'cross'
+      }
+    },
+    grid: { 
+      left: 30, 
+      right: 20, 
+      top: 20, 
+      bottom: 30,
+      containLabel: true
+    },
+    xAxis: { 
+      type: 'category', 
+      data: trendX,
+      axisLabel: {
+        rotate: 45
+      }
+    },
+    yAxis: { 
+      type: 'value',
+      axisLabel: {
+        formatter: '{value}'
+      }
+    },
+    series: [{ 
+      type: 'line', 
+      smooth: true, 
+      showSymbol: true,
+      symbol: 'circle',
+      symbolSize: 6,
+      areaStyle: {
+        opacity: 0.3
+      },
+      lineStyle: {
+        width: 3
+      },
+      data: trendY,
+      emphasis: {
+        focus: 'series'
+      }
+    }]
   });
 }
 
@@ -149,6 +279,8 @@ async function fetchOverview() {
   };
   renderModelCharts(typeStatsRes || [], trendRes || []);
 }
+
+// （删除）获取最近创建的模型逻辑
 
 async function fetchDeviceStatsAndList() {
   const [statsRes] = await Promise.allSettled([getDeviceStats()]);
@@ -240,18 +372,45 @@ async function fetchAndRenderDeviceMetrics() {
   const series = rawSeries
     .sort((a: any, b: any) => metricOrder.indexOf(a.metric) - metricOrder.indexOf(b.metric))
     .filter((m: any) => Array.isArray(m.points) && m.points.length > 0)
-    .map((m: any) => ({
-      name: m.metric,
-      type: 'line' as const,
-      smooth: true,
-      showSymbol: true,
-      symbol: 'circle',
-      symbolSize: 3,
-      areaStyle: { opacity: 0.08 },
-      data: extendStepToRange((m.points || []).map((p: any) => [p.ts, p.value]), startMs, endMs),
-      emphasis: { focus: 'series' as any },
-      sampling: 'lttb' as any,
-    }));
+    .map((m: any) => {
+      const base = {
+        name: m.metric,
+        type: 'line' as const,
+        smooth: true,
+        showSymbol: true,
+        symbol: 'circle',
+        symbolSize: 3,
+        areaStyle: { opacity: 0.08 },
+        data: extendStepToRange((m.points || []).map((p: any) => [p.ts, p.value]), startMs, endMs),
+        emphasis: { focus: 'series' as any },
+        sampling: 'lttb' as any,
+      } as any;
+
+      // 若为“07室电表”的 power 序列：显示每个点数值标签，并标注值为0的点
+      const highlightMeters = new Set(['07室电表', '08室电表']);
+      if (highlightMeters.has(String(selectedDevice.value)) && String(m.metric).toLowerCase() === 'power') {
+        base.symbolSize = 6;
+        base.label = {
+          show: true,
+          color: '#333',
+          fontSize: 10,
+          formatter: (params: any) => {
+            const d = Array.isArray(params?.data) ? params.data[1] : (params?.data?.value ?? params?.data);
+            return d === 0 || d === '0' ? '0' : String(d ?? '');
+          },
+        } as any;
+        try {
+          const zeroMarks = (m.points || [])
+            .filter((p: any) => Number(p?.value) === 0)
+            .map((p: any) => ({ coord: [p.ts, 0], value: 0, itemStyle: { color: '#d4380d' }, symbolSize: 12 }));
+          if (zeroMarks.length) {
+            base.markPoint = { data: zeroMarks } as any;
+          }
+        } catch {}
+      }
+
+      return base;
+    });
 
   // 计算参考线数据
   const flatPoints: number[] = [];
@@ -284,9 +443,8 @@ async function fetchAndRenderDeviceMetrics() {
     xAxis: { type: 'time', min: startMs, max: endMs },
     yAxis: {
       type: 'value',
-      boundaryGap: ['15%', '20%'] as any,
+      boundaryGap: ['8%', '18%'] as any,
       scale: true as any,
-      min: 0 as any,
       axisLabel: { margin: 10 },
     },
     series: (
@@ -308,6 +466,13 @@ async function fetchAndRenderDeviceMetrics() {
 onMounted(async () => {
   try {
     await Promise.all([fetchOverview(), fetchDeviceStatsAndList()]);
+    // 数据流向：动态获取并渲染
+    try {
+      await getDataModelDataflow();
+      // 如需使用动态数据：将返回值存入 dataflowNodes/dataflowLinks，并传给 DataFlowSankey 组件
+    } catch (e) {
+      console.warn('数据流向获取失败，使用默认示例');
+    }
     await fetchAndRenderDeviceMetrics();
   } catch (e) {
     console.error(e);
@@ -321,5 +486,58 @@ onMounted(async () => {
 .mb-4 { margin-bottom: 16px; }
 .chart { height: 300px; }
 .toolbar { display: flex; align-items: center; margin-bottom: 8px; }
-.chart-title { margin-bottom: 8px; font-weight: 500; }
+
+/* 新增样式 */
+.chart-container {
+  position: relative;
+  height: 300px;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  padding: 16px;
+  background: #fafafa;
+}
+
+.chart-title {
+  position: absolute;
+  top: 8px;
+  left: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  z-index: 10;
+}
+
+.table-container {
+  margin-top: 16px;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.table-title {
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fff;
+  border-radius: 6px 6px 0 0;
+}
+
+:deep(.ant-table) {
+  background: transparent;
+}
+
+:deep(.ant-table-thead > tr > th) {
+  background: #f5f5f5;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+:deep(.ant-table-tbody > tr > td) {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+:deep(.ant-table-tbody > tr:hover > td) {
+  background: #f5f5f5;
+}
 </style>

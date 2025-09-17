@@ -188,6 +188,14 @@ def datamodel_add():
     if not_valid:
         return jsonify(gen_json_response(code=400, msg=not_valid))
     res_data = DataModelApiService().add_obj(req_dict)
+    
+    # 如果是股票历史数据接口，自动更新默认参数
+    if res_data.get('code') == 200 and '股票历史数据接口' in req_dict.get('name', ''):
+        try:
+            _update_stock_defaults_from_model(req_dict)
+        except Exception as e:
+            print(f'更新股票默认参数失败: {e}')
+    
     return jsonify(res_data)
 
 
@@ -213,6 +221,14 @@ def datamodel_edit():
     if not_valid:
         return jsonify(gen_json_response(code=400, msg=not_valid))
     res_data = DataModelApiService().edit_obj(req_dict)
+    
+    # 如果是股票历史数据接口，自动更新默认参数
+    if res_data.get('code') == 200 and '股票历史数据接口' in req_dict.get('name', ''):
+        try:
+            _update_stock_defaults_from_model(req_dict)
+        except Exception as e:
+            print(f'更新股票默认参数失败: {e}')
+    
     return jsonify(res_data)
 
 
@@ -339,6 +355,43 @@ def get_creation_trend():
     except Exception as e:
         return jsonify(gen_json_response(code=500, msg=f"获取创建趋势失败：{e}"))
 
+
+@datamodel_bp.route('/dashboard/dataflow', methods=['GET'])
+@validate_user
+@validate_permissions([])
+def get_dataflow():
+    """
+    返回数据流向图所需的节点与连线（示例数据）。
+    后续可改为从数据库或配置动态生成。
+    """
+    try:
+        nodes = [
+            {"name": "外部数据源"},
+            {"name": "数据采集"},
+            {"name": "ETL/清洗"},
+            {"name": "对象存储MinIO"},
+            {"name": "关系型数据库MySQL"},
+            {"name": "向量索引TrustRAG"},
+            {"name": "数据模型"},
+            {"name": "知识库"},
+            {"name": "API服务"},
+            {"name": "仪表盘/应用"},
+        ]
+        links = [
+            {"source": "外部数据源", "target": "数据采集", "value": 20},
+            {"source": "数据采集", "target": "ETL/清洗", "value": 20},
+            {"source": "ETL/清洗", "target": "对象存储MinIO", "value": 12},
+            {"source": "ETL/清洗", "target": "关系型数据库MySQL", "value": 8},
+            {"source": "对象存储MinIO", "target": "向量索引TrustRAG", "value": 6},
+            {"source": "关系型数据库MySQL", "target": "数据模型", "value": 8},
+            {"source": "向量索引TrustRAG", "target": "知识库", "value": 6},
+            {"source": "数据模型", "target": "API服务", "value": 6},
+            {"source": "API服务", "target": "仪表盘/应用", "value": 6},
+            {"source": "知识库", "target": "仪表盘/应用", "value": 4},
+        ]
+        return jsonify(gen_json_response(data={"nodes": nodes, "links": links}))
+    except Exception as e:
+        return jsonify(gen_json_response(code=500, msg=f"获取数据流向失败：{e}"))
 
 @datamodel_bp.route('/dashboard/field-stats', methods=['GET'])
 @validate_user
@@ -638,3 +691,223 @@ def adjust_device_time_to_date():
         }, msg='ok'))
     except Exception as e:
         return jsonify(gen_json_response(code=500, msg=f'时间统一更新失败：{e}'))
+
+
+# ================= 金融数据：AkShare 股票K线（强绑定） =================
+
+@datamodel_bp.route('/stock/kline', methods=['GET'])
+@validate_user
+@validate_permissions([])
+def stock_kline():
+    """
+    获取股票K线数据，支持多种数据接口函数
+    参数：model_id、function_name、symbol、start(YYYYMMDD)、end(YYYYMMDD)、adjust(qfq/hfq/none)
+    """
+    try:
+        # 延迟导入，避免未安装报错
+        try:
+            import akshare as ak  # type: ignore
+        except Exception:
+            return jsonify(gen_json_response(code=500, msg='后端未安装 akshare'))
+
+        from utils.web_utils import get_req_para as _get
+        req = _get(request)
+        
+        # 获取参数
+        function_name = req.get('function_name', 'A股日频率数据-东方财富')
+        raw_symbol = (req.get('symbol') or '000001.SZ')
+        adjust = (str(req.get('adjust') or 'qfq')).lower()
+        
+        import datetime as _dt
+        end = req.get('end') or _dt.datetime.now().strftime('%Y%m%d')
+        start = req.get('start') or (_dt.datetime.now() - _dt.timedelta(days=365)).strftime('%Y%m%d')
+
+        # 根据函数名调用不同的AkShare接口
+        data = None
+        try:
+            from utils.cache_utils import redis_cli
+            cache_key = f'stock:kline:{function_name}:{raw_symbol}:{start}:{end}:{adjust}'
+            cache_v = redis_cli.get(cache_key)
+            if cache_v:
+                import json as _json
+                data = _json.loads(cache_v)
+        except Exception:
+            data = None
+
+        if data is None:
+            # 根据函数名选择对应的AkShare接口
+            try:
+                if 'A股日频率数据-东方财富' in function_name:
+                    # 兼容多种写法：000001.SZ / 000001 / sz000001 / SH600000
+                    import re as _re
+                    m = _re.search(r'(\d{6})', str(raw_symbol))
+                    symbol = (m.group(1) if m else str(raw_symbol)).upper()
+                    adj = 'qfq' if adjust == 'qfq' else ('hfq' if adjust == 'hfq' else None)
+                    df = ak.stock_zh_a_hist(symbol=symbol, start_date=start, end_date=end, adjust=adj)
+                elif '美股日频率数据-雅虎财经' in function_name:
+                    # 美股数据，symbol格式如 AAPL, TSLA
+                    symbol = str(raw_symbol).upper()
+                    df = ak.stock_us_daily(symbol=symbol)
+                    # 美股数据需要按时间范围过滤
+                    if df is not None and not df.empty:
+                        import pandas as pd
+                        df['date'] = pd.to_datetime(df['date'])
+                        start_date = pd.to_datetime(start, format='%Y%m%d')
+                        end_date = pd.to_datetime(end, format='%Y%m%d')
+                        df = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
+                        df = df.sort_values('date')
+                elif '港股日频率数据-腾讯' in function_name:
+                    # 港股数据，symbol格式如 00700.HK
+                    symbol = str(raw_symbol).upper()
+                    df = ak.stock_hk_daily(symbol=symbol)
+                    # 港股数据需要按时间范围过滤
+                    if df is not None and not df.empty:
+                        import pandas as pd
+                        df['date'] = pd.to_datetime(df['date'])
+                        start_date = pd.to_datetime(start, format='%Y%m%d')
+                        end_date = pd.to_datetime(end, format='%Y%m%d')
+                        df = df[(df['date'] >= start_date) & (df['date'] <= end_date)]
+                        df = df.sort_values('date')
+                else:
+                    # 默认使用A股接口
+                    import re as _re
+                    m = _re.search(r'(\d{6})', str(raw_symbol))
+                    symbol = (m.group(1) if m else str(raw_symbol)).upper()
+                    adj = 'qfq' if adjust == 'qfq' else ('hfq' if adjust == 'hfq' else None)
+                    df = ak.stock_zh_a_hist(symbol=symbol, start_date=start, end_date=end, adjust=adj)
+            except Exception as e:
+                print(f"AkShare数据获取异常: {e}")
+                import traceback
+                traceback.print_exc()
+                df = None
+            
+            if df is None or df.empty:
+                data = []
+            else:
+                try:
+                    # 统一列名映射
+                    column_mapping = {
+                        '日期': 'date', '开盘': 'open', '最高': 'high', '最低': 'low', '收盘': 'close', '成交量': 'volume',
+                        'Date': 'date', 'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'
+                    }
+                    df = df.rename(columns=column_mapping)
+                    
+                    cols = ['date', 'open', 'high', 'low', 'close', 'volume']
+                    # 只保留存在的列
+                    available_cols = [col for col in cols if col in df.columns]
+                    
+                    if not available_cols:
+                        data = []
+                    else:
+                        df = df[available_cols]
+                        # 确保数据不为空
+                        if len(df) == 0:
+                            data = []
+                        else:
+                            data = df.to_dict(orient='records')
+                except Exception as e:
+                    print(f"数据处理失败: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    data = []
+            
+            # 写缓存
+            try:
+                from utils.cache_utils import redis_cli
+                import json as _json
+                redis_cli.set(cache_key, _json.dumps(data), ex=1800)
+            except Exception:
+                pass
+
+        return jsonify(gen_json_response(data=data))
+    except Exception as e:
+        return jsonify(gen_json_response(code=500, msg=f'akshare获取失败: {e}'))
+
+
+@datamodel_bp.route('/stock/defaults', methods=['GET', 'POST'])
+@validate_user
+@validate_permissions([])
+def stock_defaults():
+    """
+    读取/保存股票K线默认参数，暂存于 Redis：key=stock:kline:defaults
+    GET -> {symbol,start,end,adjust,updated_at}
+    POST -> 保存同字段
+    """
+    key = 'stock:kline:defaults'
+    import json as _json
+    import datetime as _dt
+    from utils.cache_utils import redis_cli
+
+    if request.method == 'GET':
+        v = redis_cli.get(key)
+        if not v:
+            now = _dt.datetime.now()
+            return jsonify(gen_json_response(data={
+                'symbol': '000001.SZ',
+                'adjust': 'qfq',
+                'end': now.strftime('%Y%m%d'),
+                'start': (now - _dt.timedelta(days=365)).strftime('%Y%m%d'),
+                'updated_at': now.isoformat(),
+            }))
+        try:
+            return jsonify(gen_json_response(data=_json.loads(v)))
+        except Exception:
+            return jsonify(gen_json_response(code=500, msg='默认参数解析失败'))
+
+    # POST 保存
+    req = get_req_para(request)
+    symbol = (req.get('symbol') or '000001.SZ').upper()
+    adjust = (str(req.get('adjust') or 'qfq')).lower()
+    start = req.get('start')
+    end = req.get('end')
+    payload = {
+        'symbol': symbol,
+        'adjust': adjust,
+        'start': start,
+        'end': end,
+        'updated_at': _dt.datetime.now().isoformat(),
+    }
+    redis_cli.set(key, _json.dumps(payload))
+    return jsonify(gen_json_response(data=payload, msg='已保存默认参数'))
+
+
+def _update_stock_defaults_from_model(model_data):
+    """
+    从数据模型配置中提取股票默认参数并保存到Redis
+    """
+    try:
+        import json as _json
+        import datetime as _dt
+        from utils.cache_utils import redis_cli
+        
+        # 解析model_conf
+        model_conf = model_data.get('model_conf', '{}')
+        if isinstance(model_conf, str):
+            try:
+                conf = _json.loads(model_conf)
+            except:
+                conf = {}
+        else:
+            conf = model_conf or {}
+        
+        # 提取参数
+        symbol = conf.get('symbol', '000001.SZ')
+        adjust = conf.get('adjust', 'qfq')
+        start = conf.get('start', (_dt.datetime.now() - _dt.timedelta(days=365)).strftime('%Y%m%d'))
+        end = conf.get('end', _dt.datetime.now().strftime('%Y%m%d'))
+        
+        # 保存到Redis
+        key = 'stock:kline:defaults'
+        payload = {
+            'symbol': symbol,
+            'adjust': adjust,
+            'start': start,
+            'end': end,
+            'updated_at': _dt.datetime.now().isoformat(),
+        }
+        redis_cli.set(key, _json.dumps(payload))
+        print(f'已更新股票默认参数: {payload}')
+        
+    except Exception as e:
+        print(f'更新股票默认参数失败: {e}')
+        raise

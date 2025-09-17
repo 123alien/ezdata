@@ -120,4 +120,8 @@ BLUEPRINT_DICT = {
         'blueprint': 'web_apps.rag.views.kb_binding_views.kb_binding_bp',
         'url_prefix': '/api/rag/kb/binding'
     },
+    'scheduler': {
+        'blueprint': 'web_apps.scheduler.views.scheduler_bp',
+        'url_prefix': '/api/scheduler'
+    },
 }

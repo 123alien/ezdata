@@ -15,6 +15,9 @@ enum Api {
   importExcel = '/datamodel/importExcel',
   exportXls = '/datamodel/exportXls',
   allSourceList = '/datasource/queryAllList',
+  // 新增：金融数据接口
+  stockKline = '/datamodel/stock/kline',
+  stockDefaults = '/datamodel/stock/defaults',
 }
 /**
  * 列表接口
@@ -79,6 +82,16 @@ export const allList = (params) => defHttp.get({ url: Api.allList, params });
  * @param params
  */
 export const allSourceList = (params) => defHttp.get({ url: Api.allSourceList, params });
+
+// ===== 金融数据（AkShare 股票K线） =====
+export const getStockDefaults = () =>
+  defHttp.get({ url: Api.stockDefaults });
+
+export const saveStockDefaults = (data: { symbol: string; start: string; end: string; adjust: 'qfq'|'hfq'|'none'; }) =>
+  defHttp.post({ url: Api.stockDefaults, data });
+
+export const getStockKline = (params: { function_name?: string; symbol: string; start?: string; end?: string; adjust?: 'qfq'|'hfq'|'none'; }) =>
+  defHttp.get({ url: Api.stockKline, params });
 
 /**
  * 导入api
