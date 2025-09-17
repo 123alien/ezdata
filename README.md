@@ -16,6 +16,49 @@ ezdata 是基于python后端和vue3前端开发的数据处理分析和任务调
 - 低代码数据集成，可视化处理流中每一步结果，可使用分布式pandas引擎拓展至tb级大型数据集，使用多种内置转换算法或自定义代码快速实现数据传输管道。
 - 单任务和dag任务工作流调度，内置python，shell，数据集成等多种任务模版，也支持使用内置表单引擎和编写动态执行代码自定义任务模版，支持分布式worker执行，任务队列管理，任务失败重试，任务失败告警，任务运行日志及执行历史查看等调度系统功能。
 
+一键部署（Docker Compose）
+-----------------------------------
+无需本机安装 Python/Node 等，只需 Docker 与 Compose。
+
+1) 安装 Docker/Compose（一次性）
+```
+curl -fsSL https://get.docker.com | bash
+sudo usermod -aG docker $USER && newgrp docker
+```
+
+2) 克隆代码（HTTPS 或 SSH 二选一）
+```
+git clone https://github.com/123alien/ezdata.git
+# 或：git clone git@github.com:123alien/ezdata.git
+cd ezdata
+```
+
+3) 切到稳定快照（可选，推荐）
+```
+git checkout v20250917-1554
+# 或使用你当前分支：git checkout nb-version-branch
+```
+
+4) 一键部署全栈
+```
+cd deploy/docker
+./deploy.sh
+```
+
+启动完成后访问：
+- 前端（Nginx）：http://localhost
+- 后端 API：     http://localhost:8001
+- 调度：          http://localhost:8002
+- MinIO 控制台：  http://localhost:19001（账号 minio / 密码 ezdata123）
+
+常用运维：
+```
+docker compose ps
+docker compose logs -f --tail=200
+docker compose restart <service>
+docker compose down
+```
+
 项目链接
 -----------------------------------
 - 项目官网：  [http://www.ezdata.cloud](http://www.ezdata.cloud)
@@ -63,13 +106,15 @@ ezdata 是基于python后端和vue3前端开发的数据处理分析和任务调
 
 
 
-后端启动
-----
+开发者本地启动（可选）
+-----------------------------------
+若需本地源码方式运行，可按以下步骤（仅开发场景）：
+
 ### 依赖安装
 ```
 pip install -r requirements.txt -i https://pypi.doubanio.com/simple
 ```
-### 系统web接口服务
+### 系统 web 接口服务
 ```
 python web_api.py
 ```
@@ -77,17 +122,16 @@ python web_api.py
 ```
 python scheduler_api.py
 ```
-## celery相关
-启动worker
-- windows
+### Celery 相关
+启动 worker（Windows）
 ```
 celery -A tasks worker -P eventlet
 ```
-- linux
+启动 worker（Linux）
 ```
 celery -A tasks worker
 ```
-启动flower
+启动 flower
 ```
 celery -A tasks flower
 ```
