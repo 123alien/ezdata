@@ -700,13 +700,50 @@ class DataModelApiService(object):
                 DataModel.name.like('%设备%')
             ).all()
 
+            # 时间转换函数
+            def to_ms(v):
+                # 统一把多种 update_time 表达转成毫秒（字符串按本地时区 UTC+offset 解释）
+                try:
+                    # Mongo 扩展JSON：{"$date": 1754724322000}
+                    if isinstance(v, dict) and '$date' in v:
+                        return int(v['$date'])
+                    # 字符串：2025-09-17T15:08:08Z 或 2025-09-17 15:08:08
+                    if isinstance(v, str):
+                        if v.endswith('Z'):
+                            # UTC 时间，直接解析
+                            from datetime import datetime
+                            dt = datetime.fromisoformat(v.replace('Z', '+00:00'))
+                            return int(dt.timestamp() * 1000)
+                        else:
+                            # 本地时间，按配置的时区偏移解释
+                            from datetime import datetime
+                            dt = datetime.fromisoformat(v)
+                            # 应用时区偏移
+                            dt = dt.replace(tzinfo=timezone(tz_offset))
+                            return int(dt.timestamp() * 1000)
+                    # 数字：直接返回
+                    if isinstance(v, (int, float)):
+                        return int(v)
+                except Exception as e:
+                    print(f"时间解析失败: {v}, 错误: {e}")
+                    return None
+                return None
+
             records = []
             for model in iot_models:
                 page = 1
-                pagesize = 200
-                # 读取前若干页（最多1000条），避免一次性过大
-                for _ in range(5):
-                    result = query_service.query_obj_data({'id': model.id, 'page': page, 'pagesize': pagesize}, use_auth=False)
+                pagesize = 1000  # 单页最多1000
+                max_records = 20000  # 最多抓取2万条/模型
+                fetched = 0
+                # 按更新时间倒序分页，直到覆盖到起始时间或无更多数据
+                while True:
+                    result = query_service.query_obj_data({
+                        'id': model.id,
+                        'page': page,
+                        'pagesize': pagesize,
+                        'column': 'update_time',  # 按更新时间排序
+                        'order': 'desc'  # 倒序，最新数据在前
+                    }, use_auth=False)
                     if result.get('code') != 200:
                         break
                     data = result.get('data', {})
@@ -714,8 +751,21 @@ class DataModelApiService(object):
                     if not recs:
                         break
                     records.extend(recs)
-                    if len(recs) < pagesize:
+                    fetched += len(recs)
+
+                    # 提前退出：如果当前批次的最新时间已早于查询窗口，说明已覆盖到起点
+                    latest_time = None
+                    for rec in recs:
+                        ts = to_ms(rec.get('update_time', ''))
+                        if ts and (latest_time is None or ts > latest_time):
+                            latest_time = ts
+                    if latest_time and latest_time < start_ts:
                         break
+
+                    if len(recs) < pagesize:
+                        break  # 没有更多数据
+                    if fetched >= max_records:
+                        break  # 达到安全上限
                     page += 1
 
             # 若未命中包含“设备”的模型，回退到所有启用模型中继续查找
@@ -726,33 +776,6 @@ class DataModelApiService(object):
                 ).all()
 
             # 过滤：设备编号+时间
-            def to_ms(v):
-                # 统一把多种 update_time 表达转成毫秒（字符串按本地时区 UTC+offset 解释）
-                try:
-                    # Mongo 扩展JSON：{"$date": 1754724322000}
-                    if isinstance(v, dict) and '$date' in v:
-                        return int(v['$date'])
-                    # 纯数字毫秒/秒
-                    if isinstance(v, (int, float)) or (isinstance(v, str) and v.isdigit()):
-                        v_int = int(v)
-                        if v_int < 1e12:
-                            return v_int * 1000
-                        return v_int
-                    # 字符串时间：2025-08-09 07:25:22 / 2025-08-09T07:25:22
-                    if isinstance(v, str):
-                        txt = v.strip()
-                        if txt.endswith('Z'):
-                            txt = txt[:-1]
-                        txt = txt.replace('T', ' ').split('.')[0]
-                        for fmt in ('%Y-%m-%d %H:%M:%S', '%Y/%m/%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y/%m/%d %H:%M', '%Y-%m-%d', '%Y/%m/%d'):
-                            try:
-                                dt_local = _dt.strptime(txt, fmt).replace(tzinfo=timezone(tz_offset))
-                                return int(dt_local.timestamp() * 1000)
-                            except Exception:
-                                pass
-                    return None
-                except Exception:
-                    return None
 
             filtered = []
             for r in records:

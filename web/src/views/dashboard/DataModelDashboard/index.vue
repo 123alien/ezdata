@@ -66,6 +66,13 @@
             />
             <a-switch style="margin-left: 12px;" v-model:checked="showAvgLine" checked-children="均值" un-checked-children="均值" @change="fetchAndRenderDeviceMetrics" />
             <a-switch style="margin-left: 8px;" v-model:checked="showMaxLine" checked-children="最大" un-checked-children="最大" @change="fetchAndRenderDeviceMetrics" />
+            <span style="margin-left:12px; color:#666;">最新数据：{{ latestDataTime || '—' }}</span>
+            <a-switch style="margin-left: 12px;" v-model:checked="autoRefresh" checked-children="自动刷新" un-checked-children="手动" />
+            <a-select v-model:value="refreshMinutes" style="width:90px; margin-left:8px;" :disabled="!autoRefresh">
+              <a-select-option :value="1">1分钟</a-select-option>
+              <a-select-option :value="5">5分钟</a-select-option>
+              <a-select-option :value="15">15分钟</a-select-option>
+            </a-select>
           </div>
           <div ref="deviceLineRef" class="chart"></div>
           <div v-if="noDataHint" class="hint">{{ noDataHint }}</div>
@@ -76,7 +83,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, type Ref, computed } from 'vue';
+import { ref, onMounted, type Ref, computed, watch } from 'vue';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useECharts } from '/@/hooks/web/useECharts';
 import { useMessage } from '/@/hooks/web/useMessage';
@@ -100,6 +107,10 @@ const { setOptions: setDeviceLine } = useECharts(deviceLineRef as Ref<HTMLDivEle
 // state
 const overviewData = ref({ totalCount: 0, establishedCount: 0, unestablishedCount: 0, interfaceCount: 0 });
 const deviceStats = ref<any>({ total_devices: 0, status_dist: {}, devices: [] });
+const latestDataTime = ref<string>('');
+const autoRefresh = ref<boolean>(false);
+const refreshMinutes = ref<number>(5);
+let refreshTimer: any = null;
 const displayTotalDevices = computed(() => {
   const list = (deviceStats.value?.devices || deviceStats.value?.data?.devices || []) as any[];
   if (Array.isArray(list) && list.length) {
@@ -415,6 +426,13 @@ async function fetchAndRenderDeviceMetrics() {
   // 计算参考线数据
   const flatPoints: number[] = [];
   rawSeries.forEach((m: any) => (m.points || []).forEach((p: any) => { if (typeof p.value === 'number') flatPoints.push(p.value); }));
+  // 最新时间显示
+  const allTs: number[] = [];
+  rawSeries.forEach((m:any)=> (m.points||[]).forEach((p:any)=> { if(p && p.ts) allTs.push(p.ts);}));
+  if (allTs.length) {
+    const maxTs = Math.max(...allTs);
+    latestDataTime.value = dayjs(maxTs).format('YYYY-MM-DD HH:mm');
+  }
   const avg = flatPoints.length ? flatPoints.reduce((a, b) => a + b, 0) / flatPoints.length : undefined;
   const max = flatPoints.length ? Math.max(...flatPoints) : undefined;
 
@@ -474,6 +492,22 @@ onMounted(async () => {
       console.warn('数据流向获取失败，使用默认示例');
     }
     await fetchAndRenderDeviceMetrics();
+
+    // 自动刷新定时器
+    const setupTimer = () => {
+      if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+      if (autoRefresh.value) {
+        const ms = Math.max(1, refreshMinutes.value) * 60 * 1000;
+        refreshTimer = setInterval(() => {
+          // 将结束时间更新为当前，起点保持与当前窗口同跨度（默认1小时）
+          const end = dayjs();
+          const start = (selectedRange.value?.[0]) ? end.subtract(end.diff(selectedRange.value[0], 'minute'), 'minute') : end.subtract(60, 'minute');
+          selectedRange.value = [start, end] as any;
+          fetchAndRenderDeviceMetrics();
+        }, ms);
+      }
+    };
+    watch([autoRefresh, refreshMinutes], setupTimer, { immediate: true });
   } catch (e) {
     console.error(e);
     createMessage.error('看板加载失败');

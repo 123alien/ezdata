@@ -177,13 +177,22 @@ def document_deleteBatch():
     return jsonify(res_data)
 
 
-@document_bp.route('/sync/bulk', methods=['POST'])
+@document_bp.route('/sync/bulk', methods=['POST', 'OPTIONS'])
 @validate_user
 @validate_permissions([])
 def document_bulk_sync():
     '''
     对指定数据集进行批量回填同步到 TrustRAG。
     '''
+    # 预检请求直接放行
+    if request.method == 'OPTIONS':
+        resp = jsonify({})
+        resp.status_code = 204
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type, X-Access-Token, X-Sign, X-TIMESTAMP, tenant-id, X-Version'
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        return resp
+
     req_dict = get_req_para(request)
     verify_dict = {
         "dataset_id": {"name": "数据集ID", "required": True}
@@ -194,4 +203,7 @@ def document_bulk_sync():
     from web_apps.rag.services.trustrag_sync_service import bulk_sync_dataset
     res = bulk_sync_dataset(req_dict.get('dataset_id'))
     code = 200 if res.get('success') else 500
-    return jsonify(gen_json_response(code=code, data=res, msg='批量同步完成' if code == 200 else res.get('message')))
+    resp = jsonify(gen_json_response(code=code, data=res, msg='批量同步完成' if code == 200 else res.get('message')))
+    # 附带 CORS 头，便于前端代理/直连场景
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
