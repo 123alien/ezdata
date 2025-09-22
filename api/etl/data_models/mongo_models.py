@@ -25,9 +25,25 @@ class MongoModel(DataModel):
             auth_db = None
             
         # 避免已存在的默认连接导致报错：A different connection with alias `default` was already registered
+        # 只有在连接不存在时才创建新连接，避免关闭现有连接
         try:
-            mongoengine.disconnect(alias='default')
+            # 检查是否已有连接
+            if not mongoengine.connection.get_connection(alias='default'):
+                # 没有连接时才创建
+                pass
+            else:
+                # 已有连接，直接使用
+                self.conn = mongoengine.connection.get_connection(alias='default')
+                self.collection = model_conf.get('name', '')
+                if self.collection != '':
+                    class Model(mongoengine.DynamicDocument):
+                        meta = {'collection': model_conf.get('name', '')}
+                    self.model = Model
+                else:
+                    self.model = None
+                return
         except Exception:
+            # 连接不存在，继续创建新连接
             pass
             
         # 根据是否有认证信息选择连接方式
@@ -257,11 +273,13 @@ mongodb
                         query = query.order_by(f"-{field}")
         return True, query
 
-    def read_page(self, page=1, pagesize=20):
+    def read_page(self, page=1, pagesize=20, sort_column=None, sort_order='asc'):
         '''
         分页读取数据
         :param page:
         :param pagesize:
+        :param sort_column: 排序字段
+        :param sort_order: 排序方向 'asc' 或 'desc'
         :return:
         '''
         if self.model is False:
@@ -269,6 +287,14 @@ mongodb
         flag, query = self.gen_extract_rules()
         if not flag:
             return False, query
+        
+        # 添加排序
+        if sort_column:
+            if sort_order.lower() == 'desc':
+                query = query.order_by(f'-{sort_column}')
+            else:
+                query = query.order_by(sort_column)
+        
         total = query.count()
         query = query.skip((page - 1) * pagesize)
         query = query.limit(pagesize)

@@ -161,7 +161,15 @@ class DataModelQueryApiService(object):
                 'pagination': False  # 禁用分页
             }
             return gen_json_response(data=res_data)
-        flag, res_data = reader.read_page(page=page, pagesize=pagesize)
+        # 获取排序参数
+        column = req_dict.get('column', '')
+        order = req_dict.get('order', 'asc')
+        
+        # 如果有排序参数，传递给reader
+        if column and order:
+            flag, res_data = reader.read_page(page=page, pagesize=pagesize, sort_column=column, sort_order=order)
+        else:
+            flag, res_data = reader.read_page(page=page, pagesize=pagesize)
         if not flag:
             return gen_json_response(code=400, msg=res_data)
         if res_data['code'] == 200:
