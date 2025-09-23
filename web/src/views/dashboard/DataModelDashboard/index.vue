@@ -73,6 +73,10 @@
               <a-select-option :value="5">5分钟</a-select-option>
               <a-select-option :value="15">15分钟</a-select-option>
             </a-select>
+            <a-button type="primary" style="margin-left: 12px;" @click="exportDeviceData" :loading="exportLoading">
+              <template #icon><DownloadOutlined /></template>
+              导出数据报表
+            </a-button>
           </div>
           <div ref="deviceLineRef" class="chart"></div>
           <div v-if="noDataHint" class="hint">{{ noDataHint }}</div>
@@ -90,6 +94,7 @@ import { useMessage } from '/@/hooks/web/useMessage';
 import { getDataModelOverview, getDataModelTypeStats, getDataModelCreationTrend, getDataModelDataflow, getDeviceStats, getDeviceMetrics } from '../api';
 import StockKlineCard from '/@/views/dataManage/dataModel/components/StockKlineCard.vue';
 import DataFlowSankey from '../components/DataFlowSankey.vue';
+import { DownloadOutlined } from '@ant-design/icons-vue';
 
 const { createMessage } = useMessage();
 
@@ -133,6 +138,7 @@ const selectedRange = ref<[Dayjs, Dayjs]>([dayjs().startOf('day'), dayjs().endOf
 const showAvgLine = ref<boolean>(false);
 const showMaxLine = ref<boolean>(false);
 const noDataHint = ref<string>('');
+const exportLoading = ref<boolean>(false);
 
 function onQuickRangeChange(val: string) {
   const now = dayjs();
@@ -479,6 +485,128 @@ async function fetchAndRenderDeviceMetrics() {
   });
 
   noDataHint.value = series.length === 0 ? '当前时段无数据，已自动回退近90天再试。' : '';
+}
+
+// 导出设备数据报表
+async function exportDeviceData() {
+  if (!selectedDevice.value || !selectedRange.value) {
+    createMessage.warning('请先选择设备和时间范围');
+    return;
+  }
+
+  exportLoading.value = true;
+  try {
+    const [start, end] = selectedRange.value;
+    const startMs = start.valueOf();
+    const endMs = end.valueOf();
+    
+    // 获取设备数据
+    const res = await getDeviceMetrics({ 
+      deviceName: selectedDevice.value, 
+      start: startMs, 
+      end: endMs 
+    });
+
+    let rawSeries: any[] = [];
+    const s1 = (res as any)?.series;
+    const s2 = (res as any)?.data?.series;
+    const s = s1 ?? s2;
+    
+    if (Array.isArray(s)) {
+      rawSeries = s;
+    } else if (s && typeof s === 'object') {
+      const pickTs = (obj: any) => obj?.ts ?? obj?.time ?? obj?.timestamp ?? obj?.date ?? obj?.t ?? obj?.x ?? obj?.[0];
+      const pickVal = (obj: any) => obj?.value ?? obj?.val ?? obj?.v ?? obj?.y ?? obj?.avg ?? obj?.mean ?? obj?.data ?? obj?.[1];
+      rawSeries = Object.entries(s).map(([metric, arr]: any) => {
+        const points = (arr || []).map((p: any) =>
+          Array.isArray(p)
+            ? { ts: p[0], value: p[1] }
+            : { ts: pickTs(p), value: pickVal(p) }
+        );
+        return { metric, points };
+      });
+    }
+
+    if (rawSeries.length === 0) {
+      createMessage.warning('当前时段无数据可导出');
+      return;
+    }
+
+     // 生成CSV数据
+     const csvData = generateCSVData(rawSeries, selectedDevice.value);
+     
+     // 下载文件
+     downloadCSV(csvData, selectedDevice.value, start, end);
+    
+    createMessage.success('数据报表导出成功');
+  } catch (error) {
+    console.error('导出失败:', error);
+    createMessage.error('导出失败，请重试');
+  } finally {
+    exportLoading.value = false;
+  }
+}
+
+// 生成CSV数据
+function generateCSVData(rawSeries: any[], deviceName: string) {
+  const metricOrder = ['CO2', 'PM10', 'PM25', 'TEM', 'RH', 'power'];
+  const unitsMap: Record<string, string> = {
+    'CO2': 'ppm',
+    'PM10': 'μg/m³',
+    'PM25': 'μg/m³',
+    'TEM': '℃',
+    'RH': '%',
+    'power': 'kWh'
+  };
+
+  // 收集所有时间点
+  const allTimestamps = new Set<number>();
+  rawSeries.forEach((series: any) => {
+    (series.points || []).forEach((point: any) => {
+      if (point.ts) allTimestamps.add(point.ts);
+    });
+  });
+
+  const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
+
+  // 生成CSV头部
+  const headers = ['时间', '设备名称', ...metricOrder.map(metric => `${metric}(${unitsMap[metric] || ''})`)];
+  
+  // 生成CSV行数据
+  const rows = sortedTimestamps.map(timestamp => {
+    const timeStr = dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss');
+    const row = [timeStr, deviceName];
+    
+    metricOrder.forEach(metric => {
+      const series = rawSeries.find((s: any) => s.metric === metric);
+      const point = series?.points?.find((p: any) => p.ts === timestamp);
+      row.push(point?.value ?? '');
+    });
+    
+    return row;
+  });
+
+  return [headers, ...rows];
+}
+
+// 下载CSV文件
+function downloadCSV(data: any[][], deviceName: string, start: Dayjs, end: Dayjs) {
+  const csvContent = data.map(row => 
+    row.map(cell => `"${cell}"`).join(',')
+  ).join('\n');
+
+  const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  
+  const fileName = `${deviceName}_${start.format('YYYY-MM-DD')}_${end.format('YYYY-MM-DD')}_数据报表.csv`;
+  link.setAttribute('href', url);
+  link.setAttribute('download', fileName);
+  link.style.visibility = 'hidden';
+  
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 onMounted(async () => {
