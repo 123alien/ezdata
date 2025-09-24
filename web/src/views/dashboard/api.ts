@@ -8,7 +8,9 @@ enum Api {
   datamodelFieldStats = '/datamodel/dashboard/field-stats',
   iotDevices = '/datamodel/dashboard/iot-devices',
   deviceStats = '/datamodel/dashboard/device-stats',
+  powerMeterStats = '/datamodel/dashboard/power-meter-stats',
   deviceMetrics = '/datamodel/dashboard/device-metrics',
+  dailyPowerTrend = '/datamodel/dashboard/daily-power-trend',
 }
 
 /**
@@ -47,6 +49,16 @@ export const getIotDevices = (params?) => defHttp.get({ url: Api.iotDevices, par
 export const getDeviceStats = (params?) => defHttp.get({ url: Api.deviceStats, params });
 
 /**
+ * 获取电表设备统计信息
+ */
+export const getPowerMeterStats = (params?) => defHttp.get({ url: Api.powerMeterStats, params });
+
+/**
  * 获取设备多指标时序
  */
 export const getDeviceMetrics = (params?) => defHttp.get({ url: Api.deviceMetrics, params });
+
+/**
+ * 获取日用电量趋势数据
+ */
+export const getDailyPowerTrend = (params?) => defHttp.get({ url: Api.dailyPowerTrend, params });

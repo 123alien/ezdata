@@ -1,6 +1,6 @@
 <template>
   <div class="external-rag-container">
-    <PageWrapper title="外部 RAG 服务" content="在 ezdata 内直接使用 TrustRAG 服务">
+    <PageWrapper title="外部 RAG 服务" content="在数字金融实验室内直接使用 TrustRAG 服务">
       <!-- 知识库选择区域 -->
       <div class="kb-selector mb-4">
         <a-card title="选择知识库" size="small">

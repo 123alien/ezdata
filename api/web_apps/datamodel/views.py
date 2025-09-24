@@ -422,13 +422,24 @@ def get_iot_devices():
 @datamodel_bp.route('/dashboard/device-stats', methods=['GET'])
 def get_device_statistics():
     '''
-    获取设备统计信息
+    获取环境监测设备统计信息
     '''
     try:
         result = DataModelApiService().get_device_statistics()
         return jsonify(gen_json_response(data=result))
     except Exception as e:
         return jsonify(gen_json_response(code=500, msg=f"获取设备统计失败：{e}"))
+
+@datamodel_bp.route('/dashboard/power-meter-stats', methods=['GET'])
+def get_power_meter_statistics():
+    '''
+    获取电表设备统计信息
+    '''
+    try:
+        result = DataModelApiService().get_power_meter_statistics()
+        return jsonify(gen_json_response(data=result))
+    except Exception as e:
+        return jsonify(gen_json_response(code=500, msg=f"获取电表设备统计失败：{e}"))
 
 @datamodel_bp.route('/dashboard/device-metrics', methods=['GET'])
 def get_device_metrics():
@@ -449,6 +460,19 @@ def get_device_metrics():
     except Exception as e:
         print(f"device-metrics 错误: {e}")
         return jsonify(gen_json_response(code=500, msg=f"获取设备时序失败：{e}"))
+
+@datamodel_bp.route('/dashboard/daily-power-trend', methods=['GET'])
+def get_daily_power_trend():
+    '''
+    获取日用电量趋势数据
+    '''
+    try:
+        req = get_req_para(request)
+        days = int(req.get('days', 7))
+        result = DataModelApiService().get_daily_power_trend(days)
+        return jsonify(gen_json_response(data=result))
+    except Exception as e:
+        return jsonify(gen_json_response(code=500, msg=f"获取日用电量趋势失败：{e}"))
 
 
 # 物联网设备上报接口：实时写入 MongoDB

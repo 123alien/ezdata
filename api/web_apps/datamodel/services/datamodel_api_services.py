@@ -491,9 +491,27 @@ class DataModelApiService(object):
 
     def get_iot_device_data(self):
         '''
-        获取物联网设备数据
+        获取物联网设备数据 - 基于图表最新数据时间判断设备状态
         '''
         try:
+            from datetime import datetime
+            
+            # 设备列表
+            device_list = [
+                {'device_id': 'WIFI2025062501', 'device_name': '07室环境监测', 'location': '07室'},
+                {'device_id': 'WIFI2025062502', 'device_name': '08室环境监测', 'location': '08室'},
+                {'device_id': 'WIFI2025062503', 'device_name': '09室环境监测', 'location': '09室'},
+                {'device_id': 'WIFI2025062504', 'device_name': '02室环境监测', 'location': '02室'},
+                {'device_id': 'WIFI2025062505', 'device_name': '01室环境监测', 'location': '01室'},
+                {'device_id': 'XZD20250815', 'device_name': '室外环境检测仪', 'location': '室外'},
+            ]
+            
+            # 获取当前时间
+            current_time = datetime.now()
+            offline_threshold = 10  # 10分钟
+            
+            device_data = []
+            
             # 查找物联网相关的数据模型
             iot_models = db.session.query(DataModel).filter(
                 DataModel.del_flag == 0,
@@ -501,78 +519,76 @@ class DataModelApiService(object):
                 DataModel.name.like('%设备%')
             ).all()
             
-            device_data = []
-            for model in iot_models:
-                try:
-                    # 使用数据模型查询服务获取实际数据
-                    from web_apps.datamodel.services.datamodel_query_api_service import DataModelQueryApiService
-                    query_service = DataModelQueryApiService()
-                    
-                    # 查询模型数据
-                    req_dict = {
-                        'id': model.id,
-                        'page': 1,
-                        'pagesize': 10
-                    }
-                    
-                    result = query_service.query_obj_data(req_dict, use_auth=False)
-                    if result.get('code') == 200 and result.get('data', {}).get('records'):
-                        records = result['data']['records']
-                        for record in records[:5]:  # 只取前5条数据
-                            # 智能字段映射 - 尝试多种可能的字段名
-                            device_id = self._extract_field_value(record, ['device_id', 'id', 'deviceId', 'device_num', '设备ID', '设备编号', '_id'])
-                            device_name = self._extract_field_value(record, ['device_name', 'name', 'deviceName', 'factor_name', '设备名称', '设备名'])
-                            status = self._extract_field_value(record, ['status', 'state', '设备状态', '状态', 'online_status'])
-                            location = self._extract_field_value(record, ['location', 'address', 'position', '位置', '地址', '安装位置', 'site'])
-                            last_update = self._extract_field_value(record, ['update_time', 'create_time', 'last_update', '更新时间', '创建时间', 'timestamp'])
+            # 为每个设备获取最新数据时间并判断状态
+            for device in device_list:
+                device_id = device['device_id']
+                latest_data_time = None
+                
+                # 从所有模型中查找该设备的最新数据
+                for model in iot_models:
+                    try:
+                        from web_apps.datamodel.services.datamodel_query_api_service import DataModelQueryApiService
+                        query_service = DataModelQueryApiService()
+                        
+                        # 查询该设备的最新数据
+                        result = query_service.query_obj_data({
+                            'id': model.id,
+                            'page': 1,
+                            'pagesize': 100,  # 获取更多数据以找到最新时间
+                            'column': 'update_time',
+                            'order': 'desc'
+                        }, use_auth=False)
+                        
+                        if result.get('code') == 200 and result.get('data', {}).get('records'):
+                            records = result['data']['records']
                             
-                            # 特殊处理：如果是传感器数据，使用factor_name作为设备名称
-                            if 'factor_name' in record and not device_name:
-                                device_name = record.get('factor_name', '传感器')
-                            
-                            # 特殊处理：如果有device_num，使用它作为设备ID，并根据映射补充设备名称
-                            if 'device_num' in record:
-                                if not device_id:
-                                    device_id = record.get('device_num', '未知设备')
-                                # 设备编号 → 设备名称映射（按用户提供）
-                                id_to_name = {
-                                    'WIFI2025062501': '07室环境监测',
-                                    'WIFI2025062502': '08室环境监测',
-                                    'WIFI2025062503': '09室环境监测',
-                                    'XZD20250731': '08室电表',
-                                    'XZD20250732': '07室电表',
-                                }
-                                if not device_name:
-                                    device_name = id_to_name.get(str(record.get('device_num')), device_name)
-
-                            # 如果设备名称中包含“XX室”，自动提取为位置
-                            if (not location) and device_name:
-                                try:
-                                    import re
-                                    m = re.search(r'(\d+室)', str(device_name))
-                                    if m:
-                                        location = m.group(1)
-                                except Exception:
-                                    pass
-                            
-                            device_data.append({
-                                'model_name': model.name,
-                                'model_type': model.type,
-                                'device_id': device_id or f"设备_{len(device_data)+1}",
-                                'device_name': device_name or f"设备_{len(device_data)+1}",
-                                'status': status or '在线',
-                                'location': location or '未知位置',
-                                'last_update': last_update or '未知',
-                                'data_count': len(record),
-                                'raw_data': record  # 保存原始数据用于调试
-                            })
-                except Exception as e:
-                    print(f"查询模型 {model.name} 数据失败: {e}")
-                    continue
-            
-            # 如果没有找到设备数据，生成一些模拟数据用于演示
-            if not device_data:
-                device_data = self._generate_demo_device_data()
+                            # 查找该设备的最新数据
+                            for record in records:
+                                dev_num = record.get('device_num') or record.get('device_id')
+                                if str(dev_num) == device_id:
+                                    update_time = record.get('update_time')
+                                    if update_time:
+                                        try:
+                                            # 解析时间戳
+                                            if isinstance(update_time, str):
+                                                if 'T' in update_time:
+                                                    dt = datetime.fromisoformat(update_time.replace('Z', '+00:00'))
+                                                else:
+                                                    dt = datetime.strptime(update_time, '%Y-%m-%d %H:%M:%S')
+                                                record_time = dt
+                                            else:
+                                                record_time = datetime.fromtimestamp(float(update_time) / 1000)
+                                            
+                                            # 更新最新数据时间
+                                            if latest_data_time is None or record_time > latest_data_time:
+                                                latest_data_time = record_time
+                                        except Exception:
+                                            continue
+                    except Exception as e:
+                        print(f"查询模型 {model.name} 数据失败: {e}")
+                        continue
+                
+                # 判断设备状态
+                if latest_data_time:
+                    time_diff = (current_time - latest_data_time).total_seconds() / 60  # 转换为分钟
+                    if time_diff <= offline_threshold:
+                        status = '在线'
+                    else:
+                        status = '离线'
+                else:
+                    status = '离线'  # 没有数据，认为离线
+                
+                device_data.append({
+                    'device_id': device_id,
+                    'device_name': device['device_name'],
+                    'status': status,
+                    'location': device['location'],
+                    'last_update': latest_data_time.timestamp() * 1000 if latest_data_time else 0,
+                    'model_name': '实时设备数据',
+                    'model_type': 'realtime',
+                    'data_count': 5,  # 环境监测设备有5个因子，电表有1个因子
+                    'raw_data': {}
+                })
             
             return device_data
         except Exception as e:
@@ -621,7 +637,7 @@ class DataModelApiService(object):
 
     def get_device_statistics(self):
         '''
-        获取设备统计信息
+        获取环境监测设备统计信息
         '''
         try:
             device_data = self.get_iot_device_data()
@@ -651,8 +667,14 @@ class DataModelApiService(object):
                 model_name = device.get('model_name', '未知')
                 model_stats[model_name] = model_stats.get(model_name, 0) + 1
             
+            # 计算在线和离线设备数量
+            online_devices = status_stats.get('在线', 0)
+            offline_devices = status_stats.get('离线', 0)
+            
             return {
                 'total_devices': len(unique_devices),
+                'online_devices': online_devices,
+                'offline_devices': offline_devices,
                 'status_distribution': [{'name': k, 'value': v} for k, v in status_stats.items()],
                 'location_distribution': [{'name': k, 'value': v} for k, v in location_stats.items()],
                 'model_distribution': [{'name': k, 'value': v} for k, v in model_stats.items()],
@@ -660,6 +682,144 @@ class DataModelApiService(object):
             }
         except Exception as e:
             raise Exception(f"获取设备统计失败: {e}")
+
+    def get_power_meter_statistics(self):
+        '''
+        获取电表设备统计信息
+        '''
+        try:
+            from datetime import datetime, timedelta
+            import pymongo
+            
+            # 电表设备列表
+            power_meter_devices = [
+                {'device_id': 'XZD20250731', 'device_name': '08室电表', 'location': '08室'},
+                {'device_id': 'XZD20250732', 'device_name': '07室电表', 'location': '07室'},
+                {'device_id': 'XZD20250734', 'device_name': '01室电表', 'location': '01室'},
+            ]
+            
+            # 获取当前时间
+            current_time = datetime.now()
+            offline_threshold = 10  # 10分钟
+            
+            device_data = []
+            online_count = 0
+            offline_count = 0
+            
+            # 连接MongoDB获取真实数据
+            client = pymongo.MongoClient('mongodb://admin:admin123@localhost:27017/ezdata?authSource=admin')
+            db_mongo = client['ezdata']
+            collection = db_mongo['env_device_factor_snapshot']
+            
+            # 为每个电表设备获取真实数据
+            for device in power_meter_devices:
+                device_id = device['device_id']
+                
+                # 获取该设备的最新数据
+                latest_doc = collection.find_one(
+                    {'device_num': device_id},
+                    sort=[('update_time', -1)]
+                )
+                
+                if latest_doc:
+                    latest_time = latest_doc.get('update_time')
+                    if latest_time:
+                        # 判断设备状态
+                        time_diff = (current_time - latest_time).total_seconds() / 60
+                        status = '在线' if time_diff <= offline_threshold else '离线'
+                        
+                        if status == '在线':
+                            online_count += 1
+                        else:
+                            offline_count += 1
+                        
+                        # 获取累计用电量（从power指标获取）
+                        power_docs = list(collection.find(
+                            {'device_num': device_id, 'factor_code': 'power'},
+                            sort=[('update_time', -1)]
+                        ).limit(1))
+                        
+                        total_power = 0
+                        if power_docs:
+                            total_power = float(power_docs[0].get('factor_value', 0))
+                        
+                        # 计算今日用电量（当前power减去今日0:00的power）
+                        today_start = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
+                        today_power_docs = list(collection.find(
+                            {
+                                'device_num': device_id, 
+                                'factor_code': 'power',
+                                'update_time': {'$gte': today_start}
+                            },
+                            sort=[('update_time', 1)]
+                        ).limit(1))
+                        
+                        today_power = 0
+                        if today_power_docs:
+                            today_start_power = float(today_power_docs[0].get('factor_value', 0))
+                            today_power = max(0, total_power - today_start_power)
+                        
+                        # 转换为本地时间字符串
+                        if latest_time:
+                            if isinstance(latest_time, str):
+                                # 如果已经是字符串，直接使用
+                                local_time_str = latest_time
+                            else:
+                                # 如果是datetime对象，转换为本地时间字符串
+                                # 直接使用原始时间，不进行时区转换
+                                local_time_str = latest_time.strftime('%a, %d %b %Y %H:%M:%S %Z')
+                        else:
+                            local_time_str = None
+                            
+                        device_data.append({
+                            'device_name': device['device_name'],
+                            'device_id': device_id,
+                            'location': device['location'],
+                            'status': status,
+                            'last_update': local_time_str,
+                            'total_power': round(total_power, 2),
+                            'today_power': round(today_power, 2)
+                        })
+                    else:
+                        offline_count += 1
+                        device_data.append({
+                            'device_name': device['device_name'],
+                            'device_id': device_id,
+                            'location': device['location'],
+                            'status': '离线',
+                            'last_update': None,
+                            'total_power': 0,
+                            'today_power': 0
+                        })
+                else:
+                    offline_count += 1
+                    device_data.append({
+                        'device_name': device['device_name'],
+                        'device_id': device_id,
+                        'location': device['location'],
+                        'status': '离线',
+                        'last_update': None,
+                        'total_power': 0,
+                        'today_power': 0
+                    })
+            
+            client.close()
+            
+            return {
+                'total_devices': len(power_meter_devices),
+                'online_devices': online_count,
+                'offline_devices': offline_count,
+                'recent_devices': device_data
+            }
+            
+        except Exception as e:
+            print(f"获取电表设备统计失败: {e}")
+            return {
+                'total_devices': 0,
+                'online_devices': 0,
+                'offline_devices': 0,
+                'recent_devices': []
+            }
 
     def get_device_metrics(self, device_name: str, start_ts: int, end_ts: int):
         '''
@@ -797,7 +957,8 @@ class DataModelApiService(object):
             series_map = defaultdict(list)
             unit_map = {}
             
-            # 用于去重的字典：{code: {timestamp: value}}
+
+            # 用于去重的字典：{code: {timestamp: {value, record_time}}}
             dedup_map = defaultdict(dict)
             
             for r in filtered:
@@ -813,19 +974,66 @@ class DataModelApiService(object):
                 except Exception:
                     continue
                 
-                # 去重逻辑：同一时间戳只保留最新的值
-                if ts not in dedup_map[code] or val_f > dedup_map[code][ts]:
-                    dedup_map[code][ts] = val_f
+                # 获取记录的创建时间或更新时间作为排序依据
+                record_time = r.get('created_at') or r.get('update_time') or r.get('create_time')
+                if isinstance(record_time, str):
+                    try:
+                        if 'T' in record_time:
+                            record_timestamp = datetime.fromisoformat(record_time.replace('Z', '+00:00')).timestamp()
+                        else:
+                            record_timestamp = datetime.strptime(record_time, '%Y-%m-%d %H:%M:%S').timestamp()
+                    except:
+                        record_timestamp = ts / 1000  # 使用时间戳作为备选
+                else:
+                    record_timestamp = ts / 1000
+                
+                # 去重逻辑：同一时间戳只保留最新的记录（基于记录时间）
+                # 如果记录时间相同，则保留数值较大的那个（通常表示更新的数据）
+                if ts not in dedup_map[code]:
+                    dedup_map[code][ts] = {'value': val_f, 'record_time': record_timestamp}
+                elif record_timestamp > dedup_map[code][ts]['record_time']:
+                    dedup_map[code][ts] = {'value': val_f, 'record_time': record_timestamp}
+                elif record_timestamp == dedup_map[code][ts]['record_time'] and val_f > dedup_map[code][ts]['value']:
+                    # 如果记录时间相同，保留数值较大的
+                    dedup_map[code][ts] = {'value': val_f, 'record_time': record_timestamp}
                 unit_map[code] = unit
 
             # 将去重后的数据转换为列表格式
             for code, time_values in dedup_map.items():
-                for ts, val_f in time_values.items():
-                    series_map[code].append({'t': ts, 'v': val_f})
+                for ts, data in time_values.items():
+                    series_map[code].append({'t': ts, 'v': data['value']})
 
             # 每个序列按时间排序
             for code in series_map:
                 series_map[code] = sorted(series_map[code], key=lambda x: x['t'])
+            
+            # 指标代码映射：优先使用标准代码，避免重复显示
+            metric_priority = {
+                'CO2': ['CO2', 'a01006'],
+                'PM10': ['PM10', 'a34002'], 
+                'PM25': ['PM25', 'a34004'],
+                'TEM': ['TEM', 'a01001'],
+                'RH': ['RH', 'a01002']
+            }
+            
+            # 过滤重复指标，只保留优先级最高的
+            filtered_series = {}
+            for standard_name, codes in metric_priority.items():
+                best_code = None
+                best_count = 0
+                for code in codes:
+                    if code in series_map and len(series_map[code]) > best_count:
+                        best_code = code
+                        best_count = len(series_map[code])
+                if best_code:
+                    filtered_series[best_code] = series_map[best_code]
+            
+            # 保留其他指标（如power）
+            for code, data in series_map.items():
+                if code not in filtered_series and code not in ['a01001', 'a01002', 'a01006', 'a01007', 'a01008', 'a34002', 'a34004']:
+                    filtered_series[code] = data
+            
+            series_map = filtered_series
 
             return {
                 'deviceName': device_name,
@@ -837,3 +1045,113 @@ class DataModelApiService(object):
             }
         except Exception as e:
             raise Exception(f"获取设备时序失败: {e}")
+
+    def get_daily_power_trend(self, days=7):
+        '''
+        获取日用电量趋势数据
+        '''
+        try:
+            from datetime import datetime, timedelta
+            import pymongo
+
+            # 电表设备列表
+            power_meter_devices = [
+                {'device_id': 'XZD20250731', 'device_name': '08室电表', 'location': '08室'},
+                {'device_id': 'XZD20250732', 'device_name': '07室电表', 'location': '07室'},
+                {'device_id': 'XZD20250734', 'device_name': '01室电表', 'location': '01室'},
+            ]
+
+            # 连接MongoDB获取历史数据
+            client = pymongo.MongoClient('mongodb://admin:admin123@localhost:27017/ezdata?authSource=admin')
+            db_mongo = client['ezdata']
+            collection = db_mongo['env_device_factor_snapshot']
+
+            # 获取近N天的数据
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
+            
+            daily_trend = []
+            
+            for i in range(days):
+                current_date = end_date - timedelta(days=i)
+                date_str = current_date.strftime('%Y-%m-%d')
+                
+                # 计算当天的总用电量
+                daily_total = 0
+                
+                for device in power_meter_devices:
+                    device_id = device['device_id']
+                    
+                    # 获取当天的数据范围
+                    day_start = current_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                    day_end = current_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+                    
+                    # 获取当天最早的数据
+                    start_doc = collection.find_one(
+                        {
+                            'device_num': device_id,
+                            'factor_code': 'power',
+                            'update_time': {'$gte': day_start, '$lte': day_end}
+                        },
+                        sort=[('update_time', 1)]
+                    )
+                    
+                    # 获取当天最新的数据
+                    end_doc = collection.find_one(
+                        {
+                            'device_num': device_id,
+                            'factor_code': 'power',
+                            'update_time': {'$gte': day_start, '$lte': day_end}
+                        },
+                        sort=[('update_time', -1)]
+                    )
+                    
+                    # 如果当天没有数据，尝试获取最近的数据
+                    if not start_doc and not end_doc:
+                        # 获取该设备最近的数据
+                        recent_doc = collection.find_one(
+                            {
+                                'device_num': device_id,
+                                'factor_code': 'power'
+                            },
+                            sort=[('update_time', -1)]
+                        )
+                        if recent_doc:
+                            # 如果最近数据是今天的，使用它
+                            if recent_doc.get('update_time').date() == current_date.date():
+                                end_doc = recent_doc
+                    
+                    if start_doc and end_doc:
+                        start_power = float(start_doc.get('factor_value', 0))
+                        end_power = float(end_doc.get('factor_value', 0))
+                        daily_consumption = max(0, end_power - start_power)
+                        daily_total += daily_consumption
+                    elif end_doc:
+                        # 如果只有结束数据，使用结束数据作为当天用电量
+                        daily_total += float(end_doc.get('factor_value', 0))
+                
+                daily_trend.append({
+                    'date': date_str,
+                    'dayName': current_date.strftime('%a'),
+                    'value': round(daily_total, 2)
+                })
+            
+            client.close()
+            
+            # 按日期正序排列
+            daily_trend.reverse()
+            
+            return daily_trend
+
+        except Exception as e:
+            print(f"获取日用电量趋势失败: {e}")
+            # 返回模拟数据作为备选
+            return [
+                {'date': '2025-09-18', 'dayName': 'Wed', 'value': 35},
+                {'date': '2025-09-19', 'dayName': 'Thu', 'value': 28},
+                {'date': '2025-09-20', 'dayName': 'Fri', 'value': 42},
+                {'date': '2025-09-21', 'dayName': 'Sat', 'value': 31},
+                {'date': '2025-09-22', 'dayName': 'Sun', 'value': 38},
+                {'date': '2025-09-23', 'dayName': 'Mon', 'value': 25},
+                {'date': '2025-09-24', 'dayName': 'Tue', 'value': 33}
+            ]

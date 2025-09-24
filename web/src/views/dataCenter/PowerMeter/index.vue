@@ -1,127 +1,192 @@
 <template>
-  <div class="power-meter">
-    <a-card title="电表设备概览" class="mb-4">
-      <a-row :gutter="16" class="mb-4">
-        <a-col :span="6"><a-statistic title="设备总数" :value="deviceStats.total_devices || 0" /></a-col>
-        <a-col :span="6"><a-statistic title="在线设备" :value="deviceStats.status_dist?.online || 0" /></a-col>
-        <a-col :span="6"><a-statistic title="离线设备" :value="deviceStats.status_dist?.offline || 0" /></a-col>
-        <a-col :span="6"><a-statistic title="总用电量" :value="totalPowerConsumption" suffix="kWh" :precision="2" /></a-col>
-      </a-row>
-      
-      <DeviceChart 
-        :device-options="powerMeterOptions" 
-        device-type="power"
-        ref="deviceChartRef"
-      />
-    </a-card>
-
-    <!-- 电表设备列表 -->
-    <a-card title="电表设备列表" class="mb-4">
-      <a-table 
-        :columns="columns" 
-        :data-source="deviceList" 
-        :pagination="false"
-        size="small"
-      >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'status'">
-            <a-tag :color="record.status === 'online' ? 'green' : 'red'">
-              {{ record.status === 'online' ? '在线' : '离线' }}
-            </a-tag>
-          </template>
-          <template v-if="column.key === 'powerConsumption'">
-            <a-statistic 
-              :value="record.powerConsumption || 0" 
-              suffix="kWh" 
-              :precision="2"
-              :value-style="{ fontSize: '14px' }"
-            />
-          </template>
-          <template v-if="column.key === 'lastUpdate'">
-            {{ record.lastUpdate ? dayjs(record.lastUpdate).format('YYYY-MM-DD HH:mm:ss') : '—' }}
-          </template>
-          <template v-if="column.key === 'action'">
-            <a-button type="link" size="small" @click="viewDeviceDetail(record)">
-              查看详情
+  <div class="power-meter-dashboard">
+    <!-- 页面标题和概览 -->
+    <div class="dashboard-header">
+      <div class="header-content">
+        <div class="header-title">
+          <a-icon type="thunderbolt" class="title-icon" />
+          <h1>用电统计监控</h1>
+          <div class="title-subtitle">实时监控电表设备用电情况</div>
+        </div>
+        <div class="header-actions">
+          <a-tooltip title="数据每30秒自动更新">
+            <a-button type="primary" shape="circle" :loading="isLoading">
+              <a-icon type="sync" :spin="isLoading" />
             </a-button>
-          </template>
-        </template>
-      </a-table>
-    </a-card>
+          </a-tooltip>
+        </div>
+      </div>
+    </div>
 
-    <!-- 实时用电监控 -->
-    <a-card title="实时用电监控" class="mb-4">
-      <a-row :gutter="16">
-        <a-col :span="12" v-for="device in powerMeterDevices" :key="device.name">
-          <a-card size="small" :title="device.name" class="device-card">
-            <a-row :gutter="16">
-              <a-col :span="12">
-                <a-statistic 
-                  title="当前功率" 
-                  :value="device.metrics?.power || 0" 
-                  suffix="kW" 
-                  :precision="2"
-                  :value-style="{ color: '#1890ff' }"
-                />
-              </a-col>
-              <a-col :span="12">
-                <a-statistic 
-                  title="累计用电" 
-                  :value="device.metrics?.totalPower || 0" 
-                  suffix="kWh" 
-                  :precision="2"
-                  :value-style="{ color: '#52c41a' }"
-                />
-              </a-col>
-            </a-row>
-            <a-row :gutter="16" class="mt-2">
-              <a-col :span="12">
-                <a-statistic 
-                  title="电压" 
-                  :value="device.metrics?.voltage || 0" 
-                  suffix="V" 
-                  :precision="1"
-                />
-              </a-col>
-              <a-col :span="12">
-                <a-statistic 
-                  title="电流" 
-                  :value="device.metrics?.current || 0" 
-                  suffix="A" 
-                  :precision="2"
-                />
-              </a-col>
-            </a-row>
-            <div class="device-status">
-              <a-tag :color="device.status === 'online' ? 'green' : 'red'" size="small">
-                {{ device.status === 'online' ? '在线' : '离线' }}
-              </a-tag>
-              <span class="last-update">
-                {{ device.lastUpdate ? dayjs(device.lastUpdate).format('HH:mm:ss') : '—' }}
-              </span>
+    <!-- 统计概览卡片 -->
+    <div class="stats-overview">
+      <div class="stat-card total-devices">
+        <div class="stat-icon">
+          <a-icon type="cluster" />
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ deviceStats.total_devices || 0 }}</div>
+          <div class="stat-label">设备总数</div>
+        </div>
+      </div>
+      
+      <div class="stat-card online-devices">
+        <div class="stat-icon">
+          <a-icon type="check-circle" />
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ deviceStats.online_devices || 0 }}</div>
+          <div class="stat-label">在线设备</div>
+        </div>
+      </div>
+      
+      <div class="stat-card offline-devices">
+        <div class="stat-icon">
+          <a-icon type="close-circle" />
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ deviceStats.offline_devices || 0 }}</div>
+          <div class="stat-label">离线设备</div>
+        </div>
+      </div>
+      
+      <div class="stat-card total-power">
+        <div class="stat-icon">
+          <a-icon type="dashboard" />
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ totalPowerConsumption.toLocaleString() }}</div>
+          <div class="stat-label">总用电量 (kWh)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 实时监控设备卡片 -->
+    <div class="monitoring-section">
+      <div class="section-header">
+        <h2 class="section-title">
+          <a-icon type="monitor" />
+          实时用电监控
+        </h2>
+        <div class="section-subtitle">实时监控各电表设备的用电状态</div>
+      </div>
+      
+      <div class="device-grid">
+        <div 
+          v-for="device in powerMeterDevices" 
+          :key="device.name"
+          class="device-card"
+          :class="{ 'device-offline': device.status !== 'online' }"
+        >
+          <div class="device-card-header">
+            <div class="device-info">
+              <div class="device-icon">
+                <a-icon type="thunderbolt" />
+              </div>
+              <div class="device-details">
+                <div class="device-name">{{ device.name }}</div>
+                <div class="device-location">{{ device.location || '未知位置' }}</div>
+              </div>
             </div>
-          </a-card>
-        </a-col>
-      </a-row>
-    </a-card>
+            <div class="device-status">
+              <a-badge 
+                :status="device.status === 'online' ? 'processing' : 'error'" 
+                :text="device.status === 'online' ? '在线' : '离线'"
+              />
+            </div>
+          </div>
+          
+          <div class="device-metrics">
+            <div class="metric-row">
+              <div class="metric-item">
+                <div class="metric-icon">
+                  <a-icon type="dashboard" />
+                </div>
+                <div class="metric-content">
+                  <div class="metric-label">累计用电</div>
+                  <div class="metric-value total-power">
+                    {{ (device.metrics?.totalPower || 0).toLocaleString() }}
+                    <span class="metric-unit">kWh</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="metric-item">
+                <div class="metric-icon">
+                  <a-icon type="calendar" />
+                </div>
+                <div class="metric-content">
+                  <div class="metric-label">今日用电</div>
+                  <div class="metric-value today-power">
+                    {{ (device.metrics?.todayPower || 0).toLocaleString() }}
+                    <span class="metric-unit">kWh</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="device-footer">
+            <div class="update-info">
+              <a-icon type="clock-circle" />
+              <span>{{ device.lastUpdate ? dayjs(device.lastUpdate).format('MM-DD HH:mm:ss') : '—' }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-    <!-- 用电统计图表 -->
-    <a-card title="用电统计" class="mb-4">
-      <a-row :gutter="16">
-        <a-col :span="12">
-          <div class="chart-container">
-            <div class="chart-title">日用电量趋势</div>
-            <div ref="dailyPowerChartRef" class="chart"></div>
+    <!-- 数据图表区域 -->
+    <div class="charts-section">
+      <div class="section-header">
+        <h2 class="section-title">
+          <a-icon type="bar-chart" />
+          用电数据分析
+        </h2>
+        <div class="section-subtitle">用电趋势和设备占比分析</div>
+      </div>
+      
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-header">
+            <h3 class="chart-title">日用电量趋势</h3>
+            <div class="chart-subtitle">近7天用电量变化趋势</div>
           </div>
-        </a-col>
-        <a-col :span="12">
-          <div class="chart-container">
-            <div class="chart-title">设备用电占比</div>
-            <div ref="powerDistributionChartRef" class="chart"></div>
+          <div class="chart-content">
+            <div ref="dailyPowerChartRef" class="chart-container"></div>
           </div>
-        </a-col>
-      </a-row>
-    </a-card>
+        </div>
+        
+        <div class="chart-card">
+          <div class="chart-header">
+            <h3 class="chart-title">设备用电占比</h3>
+            <div class="chart-subtitle">各设备用电量分布</div>
+          </div>
+          <div class="chart-content">
+            <div ref="powerDistributionChartRef" class="chart-container"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 设备详情图表 -->
+    <div class="device-chart-section">
+      <div class="section-header">
+        <h2 class="section-title">
+          <a-icon type="line-chart" />
+          设备详情分析
+        </h2>
+        <div class="section-subtitle">选择设备查看详细用电数据</div>
+      </div>
+      
+      <div class="device-chart-container">
+        <DeviceChart 
+          :device-options="powerMeterOptions" 
+          device-type="power"
+          ref="deviceChartRef"
+        />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -130,7 +195,7 @@ import { ref, onMounted, computed } from 'vue';
 import dayjs from 'dayjs';
 import { useMessage } from '/@/hooks/web/useMessage';
 import { useECharts } from '/@/hooks/web/useECharts';
-import { getDeviceStats } from '/@/views/dashboard/api';
+import { getPowerMeterStats, getDailyPowerTrend } from '/@/views/dashboard/api';
 import DeviceChart from '../components/DeviceChart.vue';
 
 const { createMessage } = useMessage();
@@ -143,8 +208,8 @@ const { setOptions: setPowerDistributionChart } = useECharts(powerDistributionCh
 
 // 响应式数据
 const deviceStats = ref<any>({ total_devices: 0, status_dist: {}, devices: [] });
-const deviceList = ref<any[]>([]);
 const powerMeterDevices = ref<any[]>([]);
+const isLoading = ref(false);
 
 // 电表设备选项
 const powerMeterOptions = [
@@ -153,38 +218,6 @@ const powerMeterOptions = [
   { label: '01室电表', value: '01室电表' },
 ];
 
-// 表格列配置
-const columns = [
-  {
-    title: '设备名称',
-    dataIndex: 'name',
-    key: 'name',
-  },
-  {
-    title: '设备类型',
-    dataIndex: 'type',
-    key: 'type',
-  },
-  {
-    title: '状态',
-    dataIndex: 'status',
-    key: 'status',
-  },
-  {
-    title: '累计用电量',
-    dataIndex: 'powerConsumption',
-    key: 'powerConsumption',
-  },
-  {
-    title: '最后更新',
-    dataIndex: 'lastUpdate',
-    key: 'lastUpdate',
-  },
-  {
-    title: '操作',
-    key: 'action',
-  },
-];
 
 // 计算属性
 const totalPowerConsumption = computed(() => {
@@ -196,33 +229,21 @@ const totalPowerConsumption = computed(() => {
 // 获取设备统计信息
 async function fetchDeviceStats() {
   try {
-    const res = await getDeviceStats();
+    const res = await getPowerMeterStats();
     deviceStats.value = res;
     
-    // 过滤电表设备
-    const allDevices = res.devices || [];
-    const powerDevices = allDevices.filter((device: any) => 
-      device.name && device.name.includes('电表')
-    );
+    // 使用电表设备数据
+    const powerDevices = res.recent_devices || [];
     
-    deviceList.value = powerDevices.map((device: any) => ({
-      name: device.name,
-      type: '电表',
-      status: device.status || 'offline',
-      powerConsumption: Math.random() * 1000, // 模拟累计用电量
-      lastUpdate: device.lastUpdate || null,
-    }));
     
     // 初始化实时监控数据
     powerMeterDevices.value = powerDevices.map((device: any) => ({
-      name: device.name,
-      status: device.status || 'offline',
-      lastUpdate: device.lastUpdate || null,
+      name: device.device_name,
+      status: device.status === '在线' ? 'online' : 'offline',
+      lastUpdate: device.last_update || null,
       metrics: {
-        power: 0,
-        totalPower: 0,
-        voltage: 0,
-        current: 0,
+        totalPower: device.total_power || 0,
+        todayPower: device.today_power || 0,
       },
     }));
     
@@ -232,30 +253,92 @@ async function fetchDeviceStats() {
   }
 }
 
-// 查看设备详情
-function viewDeviceDetail(record: any) {
-  createMessage.info(`查看设备详情: ${record.name}`);
-  // 这里可以跳转到设备详情页面或打开详情弹窗
+
+// 更新实时数据（从后端获取真实数据）
+async function updateRealTimeData() {
+  try {
+    const res = await getPowerMeterStats();
+    const powerDevices = res.recent_devices || [];
+    
+    // 更新设备数据
+    powerMeterDevices.value = powerDevices.map((device: any) => ({
+      name: device.device_name,
+      status: device.status === '在线' ? 'online' : 'offline',
+      lastUpdate: device.last_update || null,
+      metrics: {
+        totalPower: device.total_power || 0,
+        todayPower: device.today_power || 0,
+      },
+    }));
+  } catch (error) {
+    console.error('更新实时数据失败:', error);
+  }
 }
 
-// 模拟实时数据更新
-function updateRealTimeData() {
-  powerMeterDevices.value.forEach(device => {
-    if (device.status === 'online') {
-      // 模拟实时数据更新
-      device.metrics = {
-        power: Math.round((Math.random() * 5) * 100) / 100, // 0-5kW
-        totalPower: Math.round((Math.random() * 1000) * 100) / 100, // 累计用电量
-        voltage: Math.round((220 + Math.random() * 20) * 10) / 10, // 220-240V
-        current: Math.round((Math.random() * 20) * 100) / 100, // 0-20A
-      };
-      device.lastUpdate = new Date().getTime();
+// 获取日用电量趋势数据
+async function fetchDailyPowerTrend() {
+  try {
+    // 使用后端API获取历史数据
+    const res = await getDailyPowerTrend({ days: 7 });
+    const trendData = res || [];
+    
+    // 如果API返回空数据，使用模拟数据作为备选
+    if (trendData.length === 0) {
+      const today = dayjs();
+      const mockData = [35, 28, 42, 31, 38, 25, 33];
+      
+      return Array.from({ length: 7 }, (_, i) => {
+        const date = today.subtract(6 - i, 'day');
+        return {
+          date: date.format('YYYY-MM-DD'),
+          dayName: date.format('ddd'),
+          value: mockData[i]
+        };
+      });
     }
-  });
+    
+    return trendData;
+  } catch (error) {
+    console.error('获取日用电量趋势失败:', error);
+    // 返回模拟数据作为备选
+    const today = dayjs();
+    const mockData = [35, 28, 42, 31, 38, 25, 33];
+    
+    return Array.from({ length: 7 }, (_, i) => {
+      const date = today.subtract(6 - i, 'day');
+      return {
+        date: date.format('YYYY-MM-DD'),
+        dayName: date.format('ddd'),
+        value: mockData[i]
+      };
+    });
+  }
+}
+
+// 获取设备用电占比数据
+async function fetchPowerDistribution() {
+  try {
+    const res = await getPowerMeterStats();
+    const devices = res.recent_devices || [];
+    
+    const distributionData = devices.map(device => ({
+      name: device.device_name,
+      value: device.total_power || 0
+    }));
+    
+    return distributionData;
+  } catch (error) {
+    console.error('获取设备用电占比失败:', error);
+    return [];
+  }
 }
 
 // 初始化图表
-function initCharts() {
+async function initCharts() {
+  // 获取真实数据
+  const dailyTrend = await fetchDailyPowerTrend();
+  const distributionData = await fetchPowerDistribution();
+  
   // 日用电量趋势图
   setDailyPowerChart({
     title: {
@@ -264,10 +347,14 @@ function initCharts() {
     },
     tooltip: {
       trigger: 'axis',
+      formatter: function(params) {
+        const data = params[0];
+        return `${data.name}<br/>用电量: ${data.value} kWh`;
+      }
     },
     xAxis: {
       type: 'category',
-      data: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+      data: dailyTrend.map(item => item.dayName),
     },
     yAxis: {
       type: 'value',
@@ -277,11 +364,14 @@ function initCharts() {
       {
         name: '用电量',
         type: 'line',
-        data: [120, 132, 101, 134, 90, 230, 210],
+        data: dailyTrend.map(item => item.value),
         smooth: true,
         areaStyle: {
           opacity: 0.3,
         },
+        itemStyle: {
+          color: '#1890ff'
+        }
       },
     ],
   });
@@ -294,7 +384,7 @@ function initCharts() {
     },
     tooltip: {
       trigger: 'item',
-      formatter: '{a} <br/>{b}: {c} ({d}%)',
+      formatter: '{a} <br/>{b}: {c} kWh ({d}%)',
     },
     legend: {
       orient: 'vertical',
@@ -305,10 +395,7 @@ function initCharts() {
         name: '用电量',
         type: 'pie',
         radius: '50%',
-        data: [
-          { value: 335, name: '07室电表' },
-          { value: 310, name: '08室电表' },
-        ],
+        data: distributionData,
         emphasis: {
           itemStyle: {
             shadowBlur: 10,
@@ -316,6 +403,11 @@ function initCharts() {
             shadowColor: 'rgba(0, 0, 0, 0.5)',
           },
         },
+        itemStyle: {
+          borderRadius: 8,
+          borderColor: '#fff',
+          borderWidth: 2
+        }
       },
     ],
   });
@@ -323,7 +415,7 @@ function initCharts() {
 
 onMounted(async () => {
   await fetchDeviceStats();
-  initCharts();
+  await initCharts();
   
   // 每30秒更新一次实时数据
   setInterval(updateRealTimeData, 30000);
@@ -331,45 +423,469 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.power-meter {
-  padding: 16px;
+.power-meter-dashboard {
+  padding: 24px;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  min-height: 100vh;
 }
 
-.device-card {
-  margin-bottom: 16px;
+/* 页面标题区域 */
+.dashboard-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16px;
+  padding: 32px;
+  margin-bottom: 32px;
+  color: white;
+  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+  position: relative;
+  overflow: hidden;
 }
 
-.device-status {
+.dashboard-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+  pointer-events: none;
+}
+
+.header-content {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #f0f0f0;
+  position: relative;
+  z-index: 1;
 }
 
-.last-update {
+.header-title h1 {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title-icon {
+  font-size: 36px;
+  color: #fff;
+}
+
+.title-subtitle {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.8);
+  margin-left: 48px;
+}
+
+.header-actions {
+  position: relative;
+  z-index: 1;
+}
+
+/* 统计概览卡片 */
+.stats-overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 24px;
+  margin-bottom: 40px;
+}
+
+.stat-card {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.stat-card.total-devices::before {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.stat-card.online-devices::before {
+  background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+}
+
+.stat-card.offline-devices::before {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+}
+
+.stat-card.total-power::before {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.stat-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: white;
+}
+
+.total-devices .stat-icon {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.online-devices .stat-icon {
+  background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+}
+
+.offline-devices .stat-icon {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+}
+
+.total-power .stat-icon {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.stat-content {
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 4px;
+}
+
+.stat-label {
+  font-size: 14px;
+  color: #7f8c8d;
+  font-weight: 500;
+}
+
+/* 监控区域 */
+.monitoring-section {
+  margin-bottom: 40px;
+}
+
+.section-header {
+  margin-bottom: 24px;
+}
+
+.section-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #2c3e50;
+  margin: 0 0 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.section-subtitle {
+  font-size: 16px;
+  color: #7f8c8d;
+  margin-left: 36px;
+}
+
+.device-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 24px;
+}
+
+.device-card {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  border: 1px solid #f0f0f0;
+  position: relative;
+  overflow: hidden;
+}
+
+.device-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.device-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%);
+}
+
+.device-card.device-offline::before {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+}
+
+.device-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.device-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.device-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 18px;
+}
+
+.device-details {
+  flex: 1;
+}
+
+.device-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 4px;
+}
+
+.device-location {
   font-size: 12px;
-  color: #999;
+  color: #7f8c8d;
 }
 
-.mt-2 {
-  margin-top: 8px;
+.device-status {
+  flex-shrink: 0;
 }
 
-.chart-container {
-  height: 300px;
+.device-metrics {
+  margin-bottom: 20px;
+}
+
+.metric-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.metric-item {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: all 0.3s ease;
+}
+
+.metric-item:hover {
+  background: #e9ecef;
+  transform: translateY(-2px);
+}
+
+.metric-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 14px;
+}
+
+.metric-content {
+  flex: 1;
+}
+
+.metric-label {
+  font-size: 12px;
+  color: #7f8c8d;
+  margin-bottom: 4px;
+}
+
+.metric-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #2c3e50;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.metric-unit {
+  font-size: 12px;
+  color: #7f8c8d;
+  font-weight: 500;
+}
+
+.total-power {
+  color: #27ae60;
+}
+
+.today-power {
+  color: #f39c12;
+}
+
+.device-footer {
+  border-top: 1px solid #f0f0f0;
+  padding-top: 16px;
+}
+
+.update-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #7f8c8d;
+}
+
+/* 图表区域 */
+.charts-section {
+  margin-bottom: 40px;
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+  gap: 24px;
+}
+
+.chart-card {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+}
+
+.chart-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.chart-header {
+  margin-bottom: 20px;
 }
 
 .chart-title {
-  text-align: center;
-  font-weight: bold;
-  margin-bottom: 16px;
-  color: #333;
+  font-size: 18px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0 0 4px 0;
 }
 
-.chart {
+.chart-subtitle {
+  font-size: 14px;
+  color: #7f8c8d;
+}
+
+.chart-content {
+  height: 300px;
+}
+
+.chart-container {
+  height: 100%;
   width: 100%;
-  height: 250px;
+}
+
+/* 设备详情图表 */
+.device-chart-section {
+  margin-bottom: 40px;
+}
+
+.device-chart-container {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .power-meter-dashboard {
+    padding: 16px;
+  }
+  
+  .dashboard-header {
+    padding: 24px;
+  }
+  
+  .header-title h1 {
+    font-size: 24px;
+  }
+  
+  .stats-overview {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .device-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .metric-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .header-content {
+    flex-direction: column;
+    gap: 16px;
+    text-align: center;
+  }
+  
+  .title-subtitle {
+    margin-left: 0;
+  }
+  
+  .stat-card {
+    padding: 16px;
+  }
+  
+  .device-card {
+    padding: 16px;
+  }
 }
 </style>

@@ -9,7 +9,7 @@
           { label: '今日', value: 'today' },
           { label: '近7天', value: '7d' },
           { label: '近30天', value: '30d' },
-          { label: '近90天', value: '90d' },
+          { label: '小时', value: 'hour' },
           { label: '本周', value: 'week' },
           { label: '本月', value: 'month' },
         ]"
@@ -103,7 +103,7 @@ function onQuickRangeChange(val: string) {
   if (val === 'today') selectedRange.value = [now.startOf('day'), now.endOf('day')];
   else if (val === '7d') selectedRange.value = [now.subtract(7, 'day').startOf('day'), now.endOf('day')];
   else if (val === '30d') selectedRange.value = [now.subtract(30, 'day').startOf('day'), now.endOf('day')];
-  else if (val === '90d') selectedRange.value = [now.subtract(90, 'day').startOf('day'), now.endOf('day')];
+  else if (val === 'hour') selectedRange.value = [now.subtract(1, 'hour'), now];
   else if (val === 'week') selectedRange.value = [now.startOf('week'), now.endOf('week')];
   else if (val === 'month') selectedRange.value = [now.startOf('month'), now.endOf('month')];
   fetchAndRenderDeviceMetrics();
@@ -113,18 +113,31 @@ function extendStepToRange(points: number[][], startMs: number, endMs: number) {
   if (!Array.isArray(points) || points.length === 0) return [];
   const sorted = [...points].sort((a, b) => a[0] - b[0]);
   const result: number[][] = [];
-  let prevTs = startMs;
+  const seenTimestamps = new Set<number>();
+  
+  // 添加起始点
+  if (sorted.length > 0) {
+    const firstVal = sorted[0][1];
+    result.push([startMs, firstVal]);
+    seenTimestamps.add(startMs);
+  }
+  
+  // 添加实际数据点，避免重复时间戳
   for (const [ts, val] of sorted) {
-    if (ts > prevTs) {
-      result.push([prevTs, val]);
+    if (!seenTimestamps.has(ts)) {
+      result.push([ts, val]);
+      seenTimestamps.add(ts);
     }
-    result.push([ts, val]);
-    prevTs = ts;
   }
-  if (prevTs < endMs) {
-    const lastVal = sorted[sorted.length - 1]?.[1];
-    if (lastVal !== undefined) result.push([endMs, lastVal]);
+  
+  // 添加结束点
+  if (sorted.length > 0) {
+    const lastVal = sorted[sorted.length - 1][1];
+    if (!seenTimestamps.has(endMs)) {
+      result.push([endMs, lastVal]);
+    }
   }
+  
   return result;
 }
 
