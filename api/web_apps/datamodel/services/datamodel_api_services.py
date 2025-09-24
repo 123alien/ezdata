@@ -684,8 +684,12 @@ class DataModelApiService(object):
                 '07室环境监测': 'WIFI2025062501',
                 '08室环境监测': 'WIFI2025062502',
                 '09室环境监测': 'WIFI2025062503',
+                '01室环境监测': 'WIFI2025062505',
+                '02室环境监测': 'WIFI2025062504',
+                '室外环境检测仪': 'XZD20250815',
                 '08室电表': 'XZD20250731',
                 '07室电表': 'XZD20250732',
+                '01室电表': 'XZD20250734',
             }
             device_num = name_to_id.get(device_name, '')
 
@@ -792,9 +796,13 @@ class DataModelApiService(object):
             from collections import defaultdict
             series_map = defaultdict(list)
             unit_map = {}
+            
+            # 用于去重的字典：{code: {timestamp: value}}
+            dedup_map = defaultdict(dict)
+            
             for r in filtered:
                 code = r.get('factor_code') or r.get('code') or ''
-                # 注意：不能用 “or” 读取数值，否则 0 会被当作假值丢弃
+                # 注意：不能用 "or" 读取数值，否则 0 会被当作假值丢弃
                 val = r.get('factor_value')
                 if val is None:
                     val = r.get('value')
@@ -804,10 +812,16 @@ class DataModelApiService(object):
                     val_f = float(str(val))
                 except Exception:
                     continue
-                series_map[code].append({'t': ts, 'v': val_f})
+                
+                # 去重逻辑：同一时间戳只保留最新的值
+                if ts not in dedup_map[code] or val_f > dedup_map[code][ts]:
+                    dedup_map[code][ts] = val_f
                 unit_map[code] = unit
 
-            # 不再回退到“忽略设备编号”的策略，避免返回其它设备（例如电表power）
+            # 将去重后的数据转换为列表格式
+            for code, time_values in dedup_map.items():
+                for ts, val_f in time_values.items():
+                    series_map[code].append({'t': ts, 'v': val_f})
 
             # 每个序列按时间排序
             for code in series_map:

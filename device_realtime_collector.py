@@ -15,7 +15,7 @@ from pymongo.errors import PyMongoError
 # -------------------------- 配置参数 --------------------------
 BASE_URL = os.getenv("IOT_BASE_URL", "http://www.xzdiot.online:11110/hb/servlet/App")
 ORG_NUM = os.getenv("IOT_ORG_NUM", "1000")
-DEVICES = os.getenv("IOT_DEVICES", "WIFI2025062501,WIFI2025062502,WIFI2025062503,XZD20250731,XZD20250732").split(",")
+DEVICES = os.getenv("IOT_DEVICES", "WIFI2025062501,WIFI2025062502,WIFI2025062503,WIFI2025062504,WIFI2025062505,XZD20250731,XZD20250732,XZD20250734,XZD20250815").split(",")
 INTERVAL_SECONDS = int(os.getenv("IOT_INTERVAL_SECONDS", "60"))  # 采集间隔，默认60秒
 CRON_TIMES = os.getenv("IOT_CRON_TIMES", "").strip()  # 逗号分隔，如 "08:00,20:00"
 

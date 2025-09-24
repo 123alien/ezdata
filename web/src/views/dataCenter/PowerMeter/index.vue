@@ -150,6 +150,7 @@ const powerMeterDevices = ref<any[]>([]);
 const powerMeterOptions = [
   { label: '07室电表', value: '07室电表' },
   { label: '08室电表', value: '08室电表' },
+  { label: '01室电表', value: '01室电表' },
 ];
 
 // 表格列配置

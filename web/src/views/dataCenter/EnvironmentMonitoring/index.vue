@@ -116,6 +116,9 @@ const environmentDeviceOptions = [
   { label: '07室环境监测', value: '07室环境监测' },
   { label: '08室环境监测', value: '08室环境监测' },
   { label: '09室环境监测', value: '09室环境监测' },
+  { label: '01室环境监测', value: '01室环境监测' },
+  { label: '02室环境监测', value: '02室环境监测' },
+  { label: '室外环境检测仪', value: '室外环境检测仪' },
 ];
 
 // 表格列配置

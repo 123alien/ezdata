@@ -51,6 +51,23 @@ const props = defineProps<Props>();
 
 const { createMessage } = useMessage();
 
+// 指标代码到中文名称的映射
+const metricNameMap: Record<string, string> = {
+  'a01001': '温度',
+  'a01002': '湿度', 
+  'a01006': '大气压',
+  'a01007': '风速',
+  'a01008': '风向',
+  'a34002': 'PM10',
+  'a34004': 'PM2.5',
+  'CO2': 'CO2',
+  'PM10': 'PM10',
+  'PM25': 'PM2.5',
+  'TEM': '温度',
+  'RH': '湿度',
+  'power': '功率'
+};
+
 // refs & echarts instances
 const deviceLineRef = ref<HTMLDivElement | null>(null);
 const { setOptions: setDeviceLine } = useECharts(deviceLineRef as Ref<HTMLDivElement>);
@@ -175,7 +192,7 @@ async function fetchAndRenderDeviceMetrics() {
     .filter((m: any) => Array.isArray(m.points) && m.points.length > 0)
     .map((m: any) => {
       const base = {
-        name: m.metric,
+        name: metricNameMap[m.metric] || m.metric,
         type: 'line' as const,
         smooth: true,
         showSymbol: true,
@@ -238,7 +255,10 @@ async function fetchAndRenderDeviceMetrics() {
           const metric = p.seriesName;
           const val = Array.isArray(p.data) ? p.data[1] : p.data?.value ?? p.data;
           const unit = unitsMap?.[metric] ? ` ${unitsMap[metric]}` : '';
-          return `${metric}｜${val}${unit}｜${dev}`;
+          // 查找原始指标代码对应的单位
+          const originalMetric = Object.keys(metricNameMap).find(key => metricNameMap[key] === metric) || metric;
+          const originalUnit = unitsMap?.[originalMetric] ? ` ${unitsMap[originalMetric]}` : '';
+          return `${metric}｜${val}${originalUnit}｜${dev}`;
         });
         return `${timeStr}<br/>` + lines.join('<br/>');
       },
@@ -357,7 +377,7 @@ function generateCSVData(rawSeries: any[], deviceName: string) {
   const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
 
   // 生成CSV头部
-  const headers = ['时间', '设备名称', ...metricOrder.map(metric => `${metric}(${unitsMap[metric] || ''})`)];
+  const headers = ['时间', '设备名称', ...metricOrder.map(metric => `${metricNameMap[metric] || metric}(${unitsMap[metric] || ''})`)];
   
   // 生成CSV行数据
   const rows = sortedTimestamps.map(timestamp => {
