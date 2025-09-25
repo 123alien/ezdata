@@ -578,6 +578,61 @@ class DataModelApiService(object):
                 else:
                     status = '离线'  # 没有数据，认为离线
                 
+                # 获取该设备的最新环境监测数据
+                raw_data = {}
+                if latest_data_time:
+                    try:
+                        import pymongo
+                        client = pymongo.MongoClient('mongodb://admin:admin123@localhost:27017/ezdata?authSource=admin')
+                        db_mongo = client['ezdata']
+                        collection = db_mongo['env_device_factor_snapshot']
+                        
+                        # 获取该设备的最新因子数据
+                        factor_docs = list(collection.find(
+                            {'device_num': device_id},
+                            sort=[('update_time', -1)]
+                        ).limit(10))  # 获取最近10条记录
+                        
+                        # 提取各种环境因子数据
+                        for doc in factor_docs:
+                            factor_code = doc.get('factor_code', '')
+                            factor_name = doc.get('factor_name', '')
+                            factor_value = doc.get('factor_value', 0)
+                            
+                            # 标准因子代码映射
+                            if factor_code == 'TEM' or factor_name == '温度':  # 温度
+                                raw_data['TEM'] = factor_value
+                            elif factor_code == 'RH' or factor_name == '湿度':  # 湿度
+                                raw_data['RH'] = factor_value
+                            elif factor_code == 'CO2' or factor_name == 'CO2':  # CO2
+                                raw_data['CO2'] = factor_value
+                            elif factor_code == 'PM25' or factor_name == 'PM2.5':  # PM2.5
+                                raw_data['PM25'] = factor_value
+                            elif factor_code == 'PM10' or factor_name == 'PM10':  # PM10
+                                raw_data['PM10'] = factor_value
+                            elif factor_code == 'NOISE' or factor_name == '噪声':  # 噪声
+                                raw_data['NOISE'] = factor_value
+                            
+                            # 室外环境检测仪的特殊因子代码映射
+                            elif factor_code == 'a01001':  # 温度
+                                raw_data['TEM'] = factor_value
+                            elif factor_code == 'a01002':  # 湿度
+                                raw_data['RH'] = factor_value
+                            elif factor_code == 'a01006':  # 大气压
+                                raw_data['PRESSURE'] = factor_value
+                            elif factor_code == 'a01007':  # 风速
+                                raw_data['WIND_SPEED'] = factor_value
+                            elif factor_code == 'a01008':  # 风向
+                                raw_data['WIND_DIRECTION'] = factor_value
+                            elif factor_code == 'a34004':  # PM2.5
+                                raw_data['PM25'] = factor_value
+                            elif factor_code == 'a34002':  # PM10
+                                raw_data['PM10'] = factor_value
+                        
+                        client.close()
+                    except Exception as e:
+                        print(f"获取设备 {device_id} 环境数据失败: {e}")
+                
                 device_data.append({
                     'device_id': device_id,
                     'device_name': device['device_name'],
@@ -587,7 +642,7 @@ class DataModelApiService(object):
                     'model_name': '实时设备数据',
                     'model_type': 'realtime',
                     'data_count': 5,  # 环境监测设备有5个因子，电表有1个因子
-                    'raw_data': {}
+                    'raw_data': raw_data
                 })
             
             return device_data
@@ -1009,11 +1064,14 @@ class DataModelApiService(object):
             
             # 指标代码映射：优先使用标准代码，避免重复显示
             metric_priority = {
-                'CO2': ['CO2', 'a01006'],
+                'CO2': ['CO2'],
                 'PM10': ['PM10', 'a34002'], 
                 'PM25': ['PM25', 'a34004'],
                 'TEM': ['TEM', 'a01001'],
-                'RH': ['RH', 'a01002']
+                'RH': ['RH', 'a01002'],
+                'WIND_SPEED': ['WIND_SPEED', 'a01007'],
+                'WIND_DIRECTION': ['WIND_DIRECTION', 'a01008'],
+                'PRESSURE': ['PRESSURE', 'a01006']
             }
             
             # 过滤重复指标，只保留优先级最高的
@@ -1028,10 +1086,17 @@ class DataModelApiService(object):
                 if best_code:
                     filtered_series[best_code] = series_map[best_code]
             
-            # 保留其他指标（如power）
+            # 保留其他指标（如power）以及未在priority中处理的指标
             for code, data in series_map.items():
-                if code not in filtered_series and code not in ['a01001', 'a01002', 'a01006', 'a01007', 'a01008', 'a34002', 'a34004']:
-                    filtered_series[code] = data
+                if code not in filtered_series:
+                    # 只排除已经通过priority处理过的低优先级代码
+                    excluded_codes = []
+                    for standard_name, codes in metric_priority.items():
+                        if len(codes) > 1:  # 如果有多个代码选项
+                            excluded_codes.extend(codes[1:])  # 排除除第一个外的其他代码
+                    
+                    if code not in excluded_codes:
+                        filtered_series[code] = data
             
             series_map = filtered_series
 

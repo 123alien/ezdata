@@ -65,6 +65,9 @@ const metricNameMap: Record<string, string> = {
   'PM25': 'PM2.5',
   'TEM': '温度',
   'RH': '湿度',
+  'WIND_SPEED': '风速',
+  'WIND_DIRECTION': '风向',
+  'PRESSURE': '大气压',
   'power': '功率'
 };
 
@@ -153,7 +156,7 @@ async function fetchAndRenderDeviceMetrics() {
   console.log('device-metrics response:', res);
 
   const metricOrder = props.deviceType === 'environment' 
-    ? ['CO2', 'PM10', 'PM25', 'TEM', 'RH'] 
+    ? ['CO2', 'PM10', 'PM25', 'TEM', 'RH', 'WIND_SPEED', 'WIND_DIRECTION', 'PRESSURE'] 
     : ['power'];
     
   let rawSeries: any[] = [];
@@ -368,7 +371,7 @@ async function exportDeviceData() {
 // 生成CSV数据
 function generateCSVData(rawSeries: any[], deviceName: string) {
   const metricOrder = props.deviceType === 'environment' 
-    ? ['CO2', 'PM10', 'PM25', 'TEM', 'RH'] 
+    ? ['CO2', 'PM10', 'PM25', 'TEM', 'RH', 'WIND_SPEED', 'WIND_DIRECTION', 'PRESSURE'] 
     : ['power'];
   const unitsMap: Record<string, string> = {
     'CO2': 'ppm',
