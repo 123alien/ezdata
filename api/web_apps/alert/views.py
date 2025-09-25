@@ -42,6 +42,60 @@ def alert_all_list():
         return jsonify(gen_json_response(code=400, msg=not_valid))
     res_data = AlertApiService.get_obj_all_list(req_dict)
     return jsonify(res_data)
+
+
+@alert_bp.route('/checkDeviceAlerts', methods=['POST'])
+@validate_user
+@validate_permissions([])
+def check_device_alerts():
+    '''
+    检查设备告警
+    '''
+    try:
+        from web_apps.alert.services.device_alert_service import DeviceAlertService
+        service = DeviceAlertService()
+        service.check_all_device_alerts()
+        return jsonify(gen_json_response(msg='设备告警检查完成'))
+    except Exception as e:
+        return jsonify(gen_json_response(code=500, msg=f"检查设备告警失败：{e}"))
+
+
+@alert_bp.route('/createDefaultStrategies', methods=['POST'])
+@validate_user
+@validate_permissions([])
+def create_default_strategies():
+    '''
+    创建默认告警策略
+    '''
+    try:
+        from web_apps.alert.strategys.device_alert_strategys import create_default_alert_strategies
+        create_default_alert_strategies()
+        return jsonify(gen_json_response(msg='默认告警策略创建完成'))
+    except Exception as e:
+        return jsonify(gen_json_response(code=500, msg=f"创建默认策略失败：{e}"))
+
+@alert_bp.route('/testNotification', methods=['POST'])
+@validate_user
+@validate_permissions([])
+def test_notification():
+    '''
+    测试通知功能
+    '''
+    try:
+        from web_apps.alert.services.notification_service import NotificationService
+        req = get_req_para(request)
+        method = req.get('method', 'platform')
+        receiver = req.get('receiver', 'admin')
+        
+        notification_service = NotificationService()
+        result = notification_service.test_notification(method, receiver)
+        
+        if result:
+            return jsonify(gen_json_response(msg=f'{method}通知测试成功'))
+        else:
+            return jsonify(gen_json_response(code=500, msg=f'{method}通知测试失败'))
+    except Exception as e:
+        return jsonify(gen_json_response(code=500, msg=f"测试通知失败：{e}"))
     
 
 @alert_bp.route('/queryById', methods=['GET'])
