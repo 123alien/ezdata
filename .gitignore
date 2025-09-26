@@ -50,3 +50,8 @@ ezdata/
 *.out
 api/supervisord.pid
 web/package-lock.json
+# Docker数据文件
+deploy/docker/elasticsearch/data/
+deploy/docker/minio/
+deploy/docker/mysql/
+*.log
