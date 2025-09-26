@@ -4,6 +4,8 @@ import '/@/design/index.less';
 import 'ant-design-vue/dist/reset.css';
 // 注册图标
 import 'virtual:svg-icons-register';
+// 全局告警样式
+import '/@/styles/global-alert.less';
 
 import App from './App.vue';
 import { createApp } from 'vue';
@@ -99,6 +101,27 @@ async function bootstrap(props?: MainAppProps) {
 
   // 挂载应用
   app.mount(getMountContainer(props), true);
+
+  // 启动全局告警监控
+  import('/@/utils/globalAlertManager').then(({ globalAlertManager }) => {
+    console.log('🚨 全局告警系统已启动');
+    // 将全局告警管理器挂载到window对象，方便调试
+    (window as any).globalAlertManager = globalAlertManager;
+    
+    // 设置路由守卫
+    import('/@/utils/routeGuard').then(({ setupAlertRouteGuard }) => {
+      setupAlertRouteGuard(router);
+      console.log('🛡️ 告警路由守卫已设置');
+    });
+    
+    // 立即检查一次告警（用于测试）
+    setTimeout(() => {
+      console.log('🔍 执行初始告警检查...');
+      globalAlertManager.manualCheckAlerts();
+    }, 2000);
+  }).catch((error) => {
+    console.error('❌ 全局告警系统启动失败:', error);
+  });
 
   console.log(" vue3 app 加载完成！")
 
