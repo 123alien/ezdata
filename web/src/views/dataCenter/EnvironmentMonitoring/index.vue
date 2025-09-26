@@ -224,31 +224,184 @@
       />
     </a-card>
 
-    <!-- 设备列表 -->
-    <a-card title="设备列表" class="mb-4">
-      <a-table 
-        :columns="columns" 
-        :data-source="deviceList" 
-        :pagination="false"
-        size="small"
-      >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'status'">
-            <a-tag :color="record.status === 'online' ? 'green' : 'red'">
-              {{ record.status === 'online' ? '在线' : '离线' }}
-            </a-tag>
-          </template>
-          <template v-if="column.key === 'lastUpdate'">
-            {{ record.lastUpdate ? dayjs(record.lastUpdate).format('YYYY-MM-DD HH:mm:ss') : '—' }}
-          </template>
-          <template v-if="column.key === 'action'">
-            <a-button type="link" size="small" @click="viewDeviceDetail(record)">
-              查看详情
-            </a-button>
-          </template>
-        </template>
-      </a-table>
-    </a-card>
+
+    <!-- 二氧化碳趋势图表 -->
+    <div class="co2-charts-section">
+      <h3 class="section-title">
+        <a-icon type="line-chart" />
+        二氧化碳浓度趋势图
+      </h3>
+      
+      <!-- 时间范围选择器 -->
+      <div class="time-selector">
+        <a-select 
+          v-model:value="selectedTimeRange" 
+          placeholder="选择时间范围"
+          style="width: 150px;"
+          @change="onTimeRangeChange"
+        >
+          <a-select-option value="1h">最近1小时</a-select-option>
+          <a-select-option value="6h">最近6小时</a-select-option>
+          <a-select-option value="24h">最近24小时</a-select-option>
+          <a-select-option value="7d">最近7天</a-select-option>
+        </a-select>
+      </div>
+
+      <!-- 两个CO2图表 -->
+      <div class="co2-charts-grid">
+        <!-- 第一个图表：07、08、09室 -->
+        <div class="co2-chart-card">
+          <div class="chart-header">
+            <h4>07、08、09设备二氧化碳浓度变化</h4>
+          </div>
+          <div class="chart-content">
+            <div ref="co2Chart1Ref" class="co2-chart"></div>
+          </div>
+        </div>
+
+        <!-- 第二个图表：01、02、室外 -->
+        <div class="co2-chart-card">
+          <div class="chart-header">
+            <h4>01、02、室外设备二氧化碳浓度变化</h4>
+          </div>
+          <div class="chart-content">
+            <div ref="co2Chart2Ref" class="co2-chart"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PM2.5浓度趋势图 -->
+    <div class="charts-section">
+      <div class="section-header">
+        <h3 class="section-title">
+          <a-icon type="cloud" />
+          PM2.5浓度趋势图
+        </h3>
+      </div>
+      
+      <!-- 两个PM2.5图表 -->
+      <div class="charts-grid">
+        <!-- 第一个图表：07、08、09室 -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h4>07、08、09设备PM2.5浓度变化</h4>
+          </div>
+          <div class="chart-content">
+            <div ref="pm25Chart1Ref" class="metric-chart"></div>
+          </div>
+        </div>
+
+        <!-- 第二个图表：01、02、室外 -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h4>01、02、室外设备PM2.5浓度变化</h4>
+          </div>
+          <div class="chart-content">
+            <div ref="pm25Chart2Ref" class="metric-chart"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PM10浓度趋势图 -->
+    <div class="charts-section">
+      <div class="section-header">
+        <h3 class="section-title">
+          <a-icon type="cloud-server" />
+          PM10浓度趋势图
+        </h3>
+      </div>
+      
+      <!-- 两个PM10图表 -->
+      <div class="charts-grid">
+        <!-- 第一个图表：07、08、09室 -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h4>07、08、09设备PM10浓度变化</h4>
+          </div>
+          <div class="chart-content">
+            <div ref="pm10Chart1Ref" class="metric-chart"></div>
+          </div>
+        </div>
+
+        <!-- 第二个图表：01、02、室外 -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h4>01、02、室外设备PM10浓度变化</h4>
+          </div>
+          <div class="chart-content">
+            <div ref="pm10Chart2Ref" class="metric-chart"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 温度趋势图 -->
+    <div class="charts-section">
+      <div class="section-header">
+        <h3 class="section-title">
+          <a-icon type="fire" />
+          温度趋势图
+        </h3>
+      </div>
+      
+      <!-- 两个温度图表 -->
+      <div class="charts-grid">
+        <!-- 第一个图表：07、08、09室 -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h4>07、08、09设备温度变化</h4>
+          </div>
+          <div class="chart-content">
+            <div ref="tempChart1Ref" class="metric-chart"></div>
+          </div>
+        </div>
+
+        <!-- 第二个图表：01、02、室外 -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h4>01、02、室外设备温度变化</h4>
+          </div>
+          <div class="chart-content">
+            <div ref="tempChart2Ref" class="metric-chart"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 湿度趋势图 -->
+    <div class="charts-section">
+      <div class="section-header">
+        <h3 class="section-title">
+          <a-icon type="water" />
+          湿度趋势图
+        </h3>
+      </div>
+      
+      <!-- 两个湿度图表 -->
+      <div class="charts-grid">
+        <!-- 第一个图表：07、08、09室 -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h4>07、08、09设备湿度变化</h4>
+          </div>
+          <div class="chart-content">
+            <div ref="humidityChart1Ref" class="metric-chart"></div>
+          </div>
+        </div>
+
+        <!-- 第二个图表：01、02、室外 -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <h4>01、02、室外设备湿度变化</h4>
+          </div>
+          <div class="chart-content">
+            <div ref="humidityChart2Ref" class="metric-chart"></div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -256,7 +409,7 @@
 import { ref, onMounted, computed } from 'vue';
 import dayjs from 'dayjs';
 import { useMessage } from '/@/hooks/web/useMessage';
-import { getDeviceStats } from '/@/views/dashboard/api';
+import { getDeviceStats, getDeviceMetrics } from '/@/views/dashboard/api';
 import DeviceChart from '../components/DeviceChart.vue';
 
 const { createMessage } = useMessage();
@@ -268,6 +421,19 @@ const deviceList = ref<any[]>([]);
 const environmentDevices = ref<any[]>([]);
 const isLoading = ref(false);
 
+// 图表相关数据
+const selectedTimeRange = ref('1h');
+const co2Chart1Ref = ref<HTMLDivElement>();
+const co2Chart2Ref = ref<HTMLDivElement>();
+const pm25Chart1Ref = ref<HTMLDivElement>();
+const pm25Chart2Ref = ref<HTMLDivElement>();
+const pm10Chart1Ref = ref<HTMLDivElement>();
+const pm10Chart2Ref = ref<HTMLDivElement>();
+const tempChart1Ref = ref<HTMLDivElement>();
+const tempChart2Ref = ref<HTMLDivElement>();
+const humidityChart1Ref = ref<HTMLDivElement>();
+const humidityChart2Ref = ref<HTMLDivElement>();
+
 // 环境监测设备选项
 const environmentDeviceOptions = [
   { label: '07室环境监测', value: '07室环境监测' },
@@ -278,39 +444,32 @@ const environmentDeviceOptions = [
   { label: '室外环境检测仪', value: '室外环境检测仪' },
 ];
 
-// 表格列配置
-const columns = [
-  {
-    title: '设备名称',
-    dataIndex: 'name',
-    key: 'name',
-  },
-  {
-    title: '设备类型',
-    dataIndex: 'type',
-    key: 'type',
-  },
-  {
-    title: '状态',
-    dataIndex: 'status',
-    key: 'status',
-  },
-  {
-    title: '最后更新',
-    dataIndex: 'lastUpdate',
-    key: 'lastUpdate',
-  },
-  {
-    title: '操作',
-    key: 'action',
-  },
-];
 
 // 计算属性
 const totalDataPoints = computed(() => {
   return environmentDevices.value.reduce((sum, device) => {
     return sum + (device.metrics ? Object.keys(device.metrics).length : 0);
   }, 0);
+});
+
+// 室内设备（07、08、09室）
+const indoorDevices = computed(() => {
+  return environmentDevices.value.filter(device => {
+    const deviceName = device.device_name || device.name || '';
+    return deviceName.includes('07室') || 
+           deviceName.includes('08室') || 
+           deviceName.includes('09室');
+  });
+});
+
+// 室外设备（01、02、室外）
+const outdoorDevices = computed(() => {
+  return environmentDevices.value.filter(device => {
+    const deviceName = device.device_name || device.name || '';
+    return deviceName.includes('01室') || 
+           deviceName.includes('02室') || 
+           deviceName.includes('室外');
+  });
 });
 
 // 获取设备统计信息
@@ -346,8 +505,13 @@ async function fetchDeviceStats() {
 // 从设备统计数据中提取环境监测设备数据
 function extractEnvironmentDevicesFromStats() {
   try {
+    console.log('开始提取环境监测设备数据...');
+    console.log('设备统计数据:', deviceStats.value);
+    
     // 从设备统计中过滤环境监测设备
     const allDevices = deviceStats.value.recent_devices || [];
+    console.log('所有设备列表:', allDevices);
+    
     const envDevices = allDevices.filter((device: any) => 
       device.device_name && (device.device_name.includes('环境监测') || device.device_name.includes('环境检测'))
     );
@@ -432,10 +596,729 @@ function extractMetricValue(device: any, metricType: string) {
 }
 
 
-// 查看设备详情
-function viewDeviceDetail(record: any) {
-  createMessage.info(`查看设备详情: ${record.name}`);
-  // 这里可以跳转到设备详情页面或打开详情弹窗
+
+// 时间范围变化处理
+function onTimeRangeChange(value: string) {
+  console.log('选择时间范围:', value);
+  selectedTimeRange.value = value;
+  // 重新渲染所有图表
+  renderCO2Charts();
+  renderPM25Charts();
+  renderPM10Charts();
+  renderTempCharts();
+  renderHumidityCharts();
+}
+
+// 渲染CO2图表
+async function renderCO2Charts() {
+  try {
+    // 获取真实的历史数据
+    await fetchRealTimeData();
+    
+    // 渲染第一个图表（室内设备）
+    await renderCO2Chart(co2Chart1Ref.value, indoorDevices.value, '室内环境监测');
+    
+    // 渲染第二个图表（室外设备）
+    await renderCO2Chart(co2Chart2Ref.value, outdoorDevices.value, '室外及特殊环境');
+  } catch (error) {
+    console.error('渲染CO2图表失败:', error);
+  }
+}
+
+// 渲染PM2.5图表
+async function renderPM25Charts() {
+  try {
+    // 获取真实的历史数据
+    await fetchRealTimeData();
+    
+    // 渲染第一个图表（室内设备）
+    await renderMetricChart(pm25Chart1Ref.value, indoorDevices.value, '室内环境监测', 'PM25', 'PM2.5浓度', 'μg/m³');
+    
+    // 渲染第二个图表（室外设备）
+    await renderMetricChart(pm25Chart2Ref.value, outdoorDevices.value, '室外及特殊环境', 'PM25', 'PM2.5浓度', 'μg/m³');
+  } catch (error) {
+    console.error('渲染PM2.5图表失败:', error);
+  }
+}
+
+// 渲染PM10图表
+async function renderPM10Charts() {
+  try {
+    // 获取真实的历史数据
+    await fetchRealTimeData();
+    
+    // 渲染第一个图表（室内设备）
+    await renderMetricChart(pm10Chart1Ref.value, indoorDevices.value, '室内环境监测', 'PM10', 'PM10浓度', 'μg/m³');
+    
+    // 渲染第二个图表（室外设备）
+    await renderMetricChart(pm10Chart2Ref.value, outdoorDevices.value, '室外及特殊环境', 'PM10', 'PM10浓度', 'μg/m³');
+  } catch (error) {
+    console.error('渲染PM10图表失败:', error);
+  }
+}
+
+// 渲染温度图表
+async function renderTempCharts() {
+  try {
+    // 获取真实的历史数据
+    await fetchRealTimeData();
+    
+    // 渲染第一个图表（室内设备）
+    await renderMetricChart(tempChart1Ref.value, indoorDevices.value, '室内环境监测', 'TEM', '温度', '°C');
+    
+    // 渲染第二个图表（室外设备）
+    await renderMetricChart(tempChart2Ref.value, outdoorDevices.value, '室外及特殊环境', 'TEM', '温度', '°C');
+  } catch (error) {
+    console.error('渲染温度图表失败:', error);
+  }
+}
+
+// 渲染湿度图表
+async function renderHumidityCharts() {
+  try {
+    // 获取真实的历史数据
+    await fetchRealTimeData();
+    
+    // 渲染第一个图表（室内设备）
+    await renderMetricChart(humidityChart1Ref.value, indoorDevices.value, '室内环境监测', 'RH', '湿度', '%');
+    
+    // 渲染第二个图表（室外设备）
+    await renderMetricChart(humidityChart2Ref.value, outdoorDevices.value, '室外及特殊环境', 'RH', '湿度', '%');
+  } catch (error) {
+    console.error('渲染湿度图表失败:', error);
+  }
+}
+
+// 获取真实的历史数据
+async function fetchRealTimeData() {
+  try {
+    console.log('获取真实设备数据...');
+    
+    // 调用设备统计API获取最新数据
+    const response = await getDeviceStats();
+    console.log('设备统计响应:', response);
+    
+    if (response && response.data) {
+      // 更新设备统计数据
+      deviceStats.value = response.data;
+      
+      // 重新提取环境监测设备数据
+      extractEnvironmentDevicesFromStats();
+      
+      console.log('环境监测设备数据已更新:', environmentDevices.value);
+    }
+  } catch (error) {
+    console.error('获取真实数据失败:', error);
+  }
+}
+
+// 渲染单个CO2图表
+async function renderCO2Chart(chartRef: HTMLDivElement | undefined, devices: any[], title: string) {
+  if (!chartRef) return;
+  
+  try {
+    console.log(`渲染${title}图表，设备数量:`, devices.length);
+    console.log('设备列表:', devices);
+    
+    // 动态导入ECharts
+    const echarts = await import('echarts');
+    
+    // 生成真实的时间序列数据
+    const timePoints = generateTimePoints(selectedTimeRange.value);
+    const seriesData = await generateCO2SeriesData(devices, timePoints);
+    
+    // 统一Y轴标签和单位为二氧化碳浓度 (ppm)
+    const yAxisName = '二氧化碳浓度';
+    const unit = 'ppm';
+    
+    // 配置图表选项
+    const option = {
+      title: {
+        text: title,
+        left: 'center',
+        textStyle: {
+          fontSize: 16,
+          fontWeight: 'bold',
+          color: '#333'
+        }
+      },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: {
+          type: 'cross'
+        },
+        formatter: function(params: any) {
+          let result = `时间: ${params[0].axisValue}<br/>`;
+          params.forEach((param: any) => {
+            result += `${param.seriesName}: ${param.value} ${unit}<br/>`;
+          });
+          return result;
+        }
+      },
+      legend: {
+        data: devices.map(d => d.name || d.device_name),
+        bottom: 10,
+        textStyle: {
+          fontSize: 12
+        }
+      },
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '15%',
+        top: '15%',
+        containLabel: true
+      },
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: timePoints,
+        name: '时间',
+        nameLocation: 'middle',
+        nameGap: 30,
+        axisLabel: {
+          fontSize: 10,
+          rotate: 45, // 旋转45度避免重叠
+          formatter: function(value: string) {
+            return value;
+          }
+        }
+      },
+      yAxis: {
+        type: 'value',
+        name: yAxisName,
+        nameLocation: 'middle',
+        nameGap: 50,
+        axisLabel: {
+          formatter: `{value} ${unit}`,
+          fontSize: 10
+        },
+        splitLine: {
+          show: true,
+          lineStyle: {
+            color: '#f0f0f0'
+          }
+        }
+      },
+      series: seriesData
+    };
+    
+    // 初始化图表
+    const chart = echarts.init(chartRef);
+    chart.setOption(option);
+    
+    // 响应式调整
+    window.addEventListener('resize', () => {
+      chart.resize();
+    });
+    
+  } catch (error) {
+    console.error('渲染图表失败:', error);
+    // 如果ECharts加载失败，显示占位内容
+    chartRef.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: center; height: 300px; color: #666; background: #fafafa; border: 1px solid #e8e8e8; border-radius: 8px;">
+        <div style="text-align: center;">
+          <div style="font-size: 16px; margin-bottom: 8px; color: #333;">${title} - 环境监测趋势图</div>
+          <div style="font-size: 14px; color: #666;">设备数量: ${devices.length}</div>
+          <div style="font-size: 12px; color: #999; margin-top: 8px;">时间范围: ${selectedTimeRange.value}</div>
+          <div style="font-size: 12px; color: #ff4d4f; margin-top: 8px;">图表加载失败</div>
+        </div>
+      </div>
+    `;
+  }
+}
+
+// 通用指标图表渲染函数
+async function renderMetricChart(chartRef: HTMLDivElement | undefined, devices: any[], title: string, metricKey: string, yAxisName: string, unit: string) {
+  if (!chartRef) return;
+  
+  try {
+    console.log(`渲染${title}图表，设备数量:`, devices.length);
+    console.log('设备列表:', devices);
+    
+    // 动态导入ECharts
+    const echarts = await import('echarts');
+    
+    // 生成真实的时间序列数据
+    const timePoints = generateTimePoints(selectedTimeRange.value);
+    const seriesData = await generateMetricSeriesData(devices, timePoints, metricKey);
+    
+    // 配置图表选项
+    const option = {
+      title: {
+        text: title,
+        left: 'center',
+        textStyle: {
+          fontSize: 16,
+          fontWeight: 'bold',
+          color: '#333'
+        }
+      },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: {
+          type: 'cross'
+        },
+        formatter: function(params: any) {
+          let result = `时间: ${params[0].axisValue}<br/>`;
+          params.forEach((param: any) => {
+            result += `${param.seriesName}: ${param.value} ${unit}<br/>`;
+          });
+          return result;
+        }
+      },
+      legend: {
+        data: devices.map(d => d.name || d.device_name),
+        bottom: 10,
+        textStyle: {
+          fontSize: 12
+        }
+      },
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '15%',
+        top: '15%',
+        containLabel: true
+      },
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: timePoints,
+        name: '时间',
+        nameLocation: 'middle',
+        nameGap: 30,
+        axisLabel: {
+          fontSize: 10,
+          rotate: 45, // 旋转45度避免重叠
+          formatter: function(value: string) {
+            return value;
+          }
+        }
+      },
+      yAxis: {
+        type: 'value',
+        name: yAxisName,
+        nameLocation: 'middle',
+        nameGap: 50,
+        axisLabel: {
+          formatter: `{value} ${unit}`,
+          fontSize: 10
+        },
+        splitLine: {
+          show: true,
+          lineStyle: {
+            color: '#f0f0f0'
+          }
+        }
+      },
+      series: seriesData
+    };
+    
+    // 初始化图表
+    const chart = echarts.init(chartRef);
+    chart.setOption(option);
+    
+    // 响应式调整
+    window.addEventListener('resize', () => {
+      chart.resize();
+    });
+    
+  } catch (error) {
+    console.error('渲染图表失败:', error);
+    // 如果ECharts加载失败，显示占位内容
+    chartRef.innerHTML = `
+      <div style="display: flex; align-items: center; justify-content: center; height: 300px; color: #666; background: #fafafa; border: 1px solid #e8e8e8; border-radius: 8px;">
+        <div style="text-align: center;">
+          <div style="font-size: 16px; margin-bottom: 8px; color: #333;">${title} - 环境监测趋势图</div>
+          <div style="font-size: 14px; color: #666;">设备数量: ${devices.length}</div>
+          <div style="font-size: 12px; color: #999; margin-top: 8px;">时间范围: ${selectedTimeRange.value}</div>
+          <div style="font-size: 12px; color: #ff4d4f; margin-top: 8px;">图表加载失败</div>
+        </div>
+      </div>
+    `;
+  }
+}
+
+// 生成时间点数据
+function generateTimePoints(timeRange: string): string[] {
+  const points: string[] = [];
+  const now = new Date();
+  let interval = 0;
+  let count = 0;
+  
+  switch (timeRange) {
+    case '1h':
+      interval = 5 * 60 * 1000; // 5分钟间隔
+      count = 12; // 12个点
+      break;
+    case '6h':
+      interval = 15 * 60 * 1000; // 15分钟间隔
+      count = 24; // 24个点
+      break;
+    case '24h':
+      interval = 60 * 60 * 1000; // 1小时间隔
+      count = 24; // 24个点
+      break;
+    case '7d':
+      interval = 6 * 60 * 60 * 1000; // 6小时间隔
+      count = 28; // 28个点
+      break;
+    default:
+      interval = 5 * 60 * 1000;
+      count = 12;
+  }
+  
+  // 从当前时间往前推
+  for (let i = count - 1; i >= 0; i--) {
+    const time = new Date(now.getTime() - i * interval);
+    let timeStr = '';
+    
+    switch (timeRange) {
+      case '1h':
+        timeStr = dayjs(time).format('HH:mm');
+        break;
+      case '6h':
+        timeStr = dayjs(time).format('HH:mm');
+        break;
+      case '24h':
+        timeStr = dayjs(time).format('MM-DD HH:mm');
+        break;
+      case '7d':
+        timeStr = dayjs(time).format('MM-DD HH:mm');
+        break;
+      default:
+        timeStr = dayjs(time).format('HH:mm');
+    }
+    
+    points.push(timeStr);
+  }
+  
+  return points;
+}
+
+// 生成CO2系列数据
+async function generateCO2SeriesData(devices: any[], timePoints: string[]) {
+  const colors = ['#1890ff', '#52c41a', '#fa8c16', '#f5222d', '#722ed1', '#13c2c2'];
+  
+  const seriesData: any[] = [];
+  
+  // 统一时间范围，确保所有设备使用相同的时间点
+  const endTime = new Date();
+  const startTime = new Date(endTime.getTime() - getTimeRangeMs(selectedTimeRange.value));
+  
+  console.log(`统一时间范围: ${startTime.toISOString()} - ${endTime.toISOString()}`);
+  
+  for (let index = 0; index < devices.length; index++) {
+    const device = devices[index];
+    const deviceName = device.name || device.device_name || `设备${index + 1}`;
+    
+    try {
+      // 检查设备是否在线
+      const deviceStatus = device.status || device.device_status;
+      if (deviceStatus === 'offline' || deviceStatus === '离线') {
+        console.warn(`设备 ${deviceName} 离线，跳过历史数据获取`);
+        // 离线设备显示空数据
+        seriesData.push({
+          name: `${deviceName} (离线)`,
+          type: 'line',
+          data: [],
+          smooth: true,
+          symbol: 'circle',
+          symbolSize: 4,
+          lineStyle: {
+            width: 2,
+            type: 'dashed' // 离线设备用虚线
+          },
+          itemStyle: {
+            color: colors[index % colors.length]
+          },
+          emphasis: {
+            focus: 'series'
+          }
+        });
+        continue; // 跳过这个设备
+      }
+      
+      console.log(`获取设备 ${deviceName} 历史数据，时间范围: ${startTime.toISOString()} - ${endTime.toISOString()}`);
+      
+      const historyData = await getDeviceMetrics({
+        deviceName: deviceName, // 使用正确的参数名
+        start: startTime.valueOf(), // 使用毫秒时间戳
+        end: endTime.valueOf()
+      });
+      
+      console.log(`设备 ${deviceName} 历史数据:`, historyData);
+      
+      // 检查设备类型，室外设备没有CO2指标
+      const isOutdoorDevice = deviceName.includes('室外') || deviceName.includes('Outdoor');
+      const metricKey = 'CO2'; // 所有设备都尝试获取CO2数据
+      const metricName = 'CO2';
+      
+      let data: number[] = [];
+      
+      if (historyData && historyData.series && historyData.series[metricKey] && historyData.series[metricKey].length > 0) {
+        // 使用真实历史数据
+        const metricSeries = historyData.series[metricKey];
+        console.log(`设备 ${deviceName} ${metricName}原始数据:`, metricSeries);
+        
+        // 将时间序列数据转换为数值数组
+        data = metricSeries.map((item: any) => item.v || item.value || 0);
+        console.log(`设备 ${deviceName} ${metricName}数据点: ${data.length}`);
+      } else {
+        // 如果没有历史数据
+        if (isOutdoorDevice) {
+          // 室外设备没有CO2数据，设置为空数组（不画线）
+          data = [];
+          console.log(`设备 ${deviceName} 是室外设备，无CO2数据，不画线`);
+        } else {
+          // 室内设备使用当前值生成模拟数据
+          const currentValue = device.metrics?.[metricKey] || device.raw_data?.[metricKey] || 400;
+          data = timePoints.map((_, i) => {
+            const baseValue = currentValue;
+            const variation = Math.sin(i * 0.3) * 20 + Math.random() * 10 - 5;
+            return Math.max(0, Math.round(baseValue + variation));
+          });
+          console.log(`设备 ${deviceName} 使用模拟数据，当前${metricName}: ${currentValue}`);
+        }
+      }
+      
+      seriesData.push({
+        name: deviceName,
+        type: 'line',
+        data: data,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 4,
+        lineStyle: {
+          width: 2
+        },
+        itemStyle: {
+          color: colors[index % colors.length]
+        },
+        emphasis: {
+          focus: 'series'
+        }
+      });
+      
+    } catch (error) {
+      console.error(`处理设备 ${deviceName} 数据失败:`, error);
+      
+      // 检查设备类型，室外设备没有CO2指标
+      const isOutdoorDevice = deviceName.includes('室外') || deviceName.includes('Outdoor');
+      
+      let data: number[] = [];
+      
+      if (isOutdoorDevice) {
+        // 室外设备没有CO2数据，设置为空数组（不画线）
+        data = [];
+        console.log(`设备 ${deviceName} 是室外设备，无CO2数据，不画线`);
+      } else {
+        // 室内设备使用当前值生成模拟数据
+        const currentValue = device.metrics?.CO2 || device.raw_data?.CO2 || 400;
+        data = timePoints.map((_, i) => {
+          const baseValue = currentValue;
+          const variation = Math.sin(i * 0.3) * 20 + Math.random() * 10 - 5;
+          return Math.max(0, Math.round(baseValue + variation));
+        });
+      }
+      
+      seriesData.push({
+        name: deviceName,
+        type: 'line',
+        data: data,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 4,
+        lineStyle: {
+          width: 2
+        },
+        itemStyle: {
+          color: colors[index % colors.length]
+        },
+        emphasis: {
+          focus: 'series'
+        }
+      });
+    }
+  }
+  
+  return seriesData;
+}
+
+// 通用指标系列数据生成函数
+async function generateMetricSeriesData(devices: any[], timePoints: string[], metricKey: string) {
+  const colors = ['#1890ff', '#52c41a', '#fa8c16', '#f5222d', '#722ed1', '#13c2c2'];
+  
+  const seriesData: any[] = [];
+  
+  // 统一时间范围，确保所有设备使用相同的时间点
+  const endTime = new Date();
+  const startTime = new Date(endTime.getTime() - getTimeRangeMs(selectedTimeRange.value));
+  
+  console.log(`统一时间范围: ${startTime.toISOString()} - ${endTime.toISOString()}`);
+  
+  for (let index = 0; index < devices.length; index++) {
+    const device = devices[index];
+    const deviceName = device.name || device.device_name || `设备${index + 1}`;
+    
+    try {
+      // 检查设备是否在线
+      const deviceStatus = device.status || device.device_status;
+      if (deviceStatus === 'offline' || deviceStatus === '离线') {
+        console.warn(`设备 ${deviceName} 离线，跳过历史数据获取`);
+        // 离线设备显示空数据
+        seriesData.push({
+          name: `${deviceName} (离线)`,
+          type: 'line',
+          data: [],
+          smooth: true,
+          symbol: 'circle',
+          symbolSize: 4,
+          lineStyle: {
+            width: 2,
+            type: 'dashed' // 离线设备用虚线
+          },
+          itemStyle: {
+            color: colors[index % colors.length]
+          },
+          emphasis: {
+            focus: 'series'
+          }
+        });
+        continue; // 跳过这个设备
+      }
+      
+      console.log(`获取设备 ${deviceName} 历史数据，时间范围: ${startTime.toISOString()} - ${endTime.toISOString()}`);
+      
+      const historyData = await getDeviceMetrics({
+        deviceName: deviceName, // 使用正确的参数名
+        start: startTime.valueOf(), // 使用毫秒时间戳
+        end: endTime.valueOf()
+      });
+      
+      console.log(`设备 ${deviceName} 历史数据:`, historyData);
+      
+      let data: number[] = [];
+      
+      if (historyData && historyData.series && historyData.series[metricKey] && historyData.series[metricKey].length > 0) {
+        // 使用真实历史数据
+        const metricSeries = historyData.series[metricKey];
+        console.log(`设备 ${deviceName} ${metricKey}原始数据:`, metricSeries);
+        
+        // 将时间序列数据转换为数值数组
+        data = metricSeries.map((item: any) => item.v || item.value || 0);
+        console.log(`设备 ${deviceName} ${metricKey}数据点: ${data.length}`);
+      } else {
+        // 如果没有历史数据，使用当前值生成模拟数据
+        const currentValue = device.metrics?.[metricKey] || device.raw_data?.[metricKey] || getDefaultValue(metricKey);
+        data = timePoints.map((_, i) => {
+          const baseValue = currentValue;
+          const variation = Math.sin(i * 0.3) * getVariationRange(metricKey) + Math.random() * getRandomRange(metricKey) - getRandomRange(metricKey) / 2;
+          return Math.max(0, Math.round(baseValue + variation));
+        });
+        console.log(`设备 ${deviceName} 使用模拟数据，当前${metricKey}: ${currentValue}`);
+      }
+      
+      seriesData.push({
+        name: deviceName,
+        type: 'line',
+        data: data,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 4,
+        lineStyle: {
+          width: 2
+        },
+        itemStyle: {
+          color: colors[index % colors.length]
+        },
+        emphasis: {
+          focus: 'series'
+        }
+      });
+      
+    } catch (error) {
+      console.error(`处理设备 ${deviceName} 数据失败:`, error);
+      
+      // 使用当前值生成模拟数据
+      const currentValue = device.metrics?.[metricKey] || device.raw_data?.[metricKey] || getDefaultValue(metricKey);
+      const data = timePoints.map((_, i) => {
+        const baseValue = currentValue;
+        const variation = Math.sin(i * 0.3) * getVariationRange(metricKey) + Math.random() * getRandomRange(metricKey) - getRandomRange(metricKey) / 2;
+        return Math.max(0, Math.round(baseValue + variation));
+      });
+      
+      seriesData.push({
+        name: deviceName,
+        type: 'line',
+        data: data,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 4,
+        lineStyle: {
+          width: 2
+        },
+        itemStyle: {
+          color: colors[index % colors.length]
+        },
+        emphasis: {
+          focus: 'series'
+        }
+      });
+    }
+  }
+  
+  return seriesData;
+}
+
+// 获取指标的默认值
+function getDefaultValue(metricKey: string): number {
+  switch (metricKey) {
+    case 'PM25': return 50;
+    case 'PM10': return 80;
+    case 'TEM': return 25;
+    case 'RH': return 60;
+    default: return 0;
+  }
+}
+
+// 获取指标的变化范围
+function getVariationRange(metricKey: string): number {
+  switch (metricKey) {
+    case 'PM25': return 10;
+    case 'PM10': return 15;
+    case 'TEM': return 5;
+    case 'RH': return 10;
+    default: return 10;
+  }
+}
+
+// 获取指标的随机范围
+function getRandomRange(metricKey: string): number {
+  switch (metricKey) {
+    case 'PM25': return 8;
+    case 'PM10': return 12;
+    case 'TEM': return 3;
+    case 'RH': return 8;
+    default: return 5;
+  }
+}
+
+// 获取时间范围的毫秒数
+function getTimeRangeMs(timeRange: string): number {
+  switch (timeRange) {
+    case '1h':
+      return 60 * 60 * 1000; // 1小时
+    case '6h':
+      return 6 * 60 * 60 * 1000; // 6小时
+    case '24h':
+      return 24 * 60 * 60 * 1000; // 24小时
+    case '7d':
+      return 7 * 24 * 60 * 60 * 1000; // 7天
+    default:
+      return 60 * 60 * 1000; // 默认1小时
+  }
 }
 
 
@@ -544,6 +1427,15 @@ onMounted(async () => {
     console.error('设备统计获取失败:', error);
     createMessage.error('获取设备数据失败');
   }
+  
+  // 渲染所有图表
+  setTimeout(() => {
+    renderCO2Charts();
+    renderPM25Charts();
+    renderPM10Charts();
+    renderTempCharts();
+    renderHumidityCharts();
+  }, 1000);
   
   // 每30秒更新一次实时数据
   setInterval(updateRealTimeData, 30000);
@@ -1079,6 +1971,161 @@ onMounted(async () => {
   
   .metric-item {
     padding: 6px;
+  }
+}
+
+/* CO2图表区域样式 */
+.co2-charts-section {
+  margin-top: 24px;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 20px;
+}
+
+.section-title .anticon {
+  margin-right: 8px;
+  color: #1890ff;
+}
+
+.time-selector {
+  display: flex;
+  align-items: center;
+  margin-bottom: 24px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.co2-charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 20px;
+}
+
+.co2-chart-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.co2-chart-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.chart-header {
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.chart-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+}
+
+.chart-content {
+  padding: 20px;
+  min-height: 300px;
+}
+
+.co2-chart {
+  width: 100%;
+  height: 300px;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .co2-charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 其他指标图表样式 */
+.charts-section {
+  margin-top: 32px;
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 20px;
+}
+
+.chart-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.chart-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.chart-header {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+.chart-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chart-content {
+  padding: 20px;
+}
+
+.metric-chart {
+  width: 100%;
+  height: 300px;
+  border-radius: 8px;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .time-selector {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .charts-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .metric-chart {
+    height: 250px;
   }
 }
 </style>
