@@ -55,3 +55,4 @@ deploy/docker/elasticsearch/data/
 deploy/docker/minio/
 deploy/docker/mysql/
 *.log
+device_data.log*
