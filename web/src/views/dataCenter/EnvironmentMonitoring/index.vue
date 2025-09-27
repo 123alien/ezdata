@@ -155,45 +155,90 @@
             </div>
             
             <!-- 室外环境检测仪只显示PM2.5 -->
-            <div v-if="device.name.includes('室外')" class="metric-row">
-              <div class="metric-item">
-                <div class="metric-label">PM2.5</div>
-                <div class="metric-value">{{ device.metrics?.PM25 || 0 }}μg/m³</div>
-              </div>
-              <div class="metric-item">
-                <!-- 空位，保持布局平衡 -->
+            <div v-if="device.name.includes('室外')" class="metric-row metric-row-single">
+              <div class="metric-item metric-item-center">
+                <div class="metric-icon">
+                  <a-icon type="cloud-download" />
+                </div>
+                <div class="metric-content">
+                  <div class="metric-label">PM2.5</div>
+                  <div class="metric-value pm25">
+                    {{ device.metrics?.PM25 || 0 }}
+                    <span class="metric-unit">μg/m³</span>
+                  </div>
+                </div>
               </div>
             </div>
             
             <!-- 室内环境监测设备只显示PM10，居中显示 -->
             <div v-if="!device.name.includes('室外')" class="metric-row metric-row-single">
               <div class="metric-item metric-item-center">
-                <div class="metric-label">PM10</div>
-                <div class="metric-value">{{ device.metrics?.PM10 || 0 }}μg/m³</div>
+                <div class="metric-icon">
+                  <a-icon type="cloud-server" />
+                </div>
+                <div class="metric-content">
+                  <div class="metric-label">PM10</div>
+                  <div class="metric-value pm10">
+                    {{ device.metrics?.PM10 || 0 }}
+                    <span class="metric-unit">μg/m³</span>
+                  </div>
+                </div>
               </div>
             </div>
             
             <!-- 室外环境检测仪显示PM10和大气压 -->
             <div v-if="device.name.includes('室外')" class="metric-row">
               <div class="metric-item">
-                <div class="metric-label">PM10</div>
-                <div class="metric-value">{{ device.metrics?.PM10 || 0 }}μg/m³</div>
+                <div class="metric-icon">
+                  <a-icon type="cloud-server" />
+                </div>
+                <div class="metric-content">
+                  <div class="metric-label">PM10</div>
+                  <div class="metric-value pm10">
+                    {{ device.metrics?.PM10 || 0 }}
+                    <span class="metric-unit">μg/m³</span>
+                  </div>
+                </div>
               </div>
               <div class="metric-item">
-                <div class="metric-label">大气压</div>
-                <div class="metric-value">{{ device.metrics?.PRESSURE || 0 }}hPa</div>
+                <div class="metric-icon">
+                  <a-icon type="dashboard" />
+                </div>
+                <div class="metric-content">
+                  <div class="metric-label">大气压</div>
+                  <div class="metric-value pressure">
+                    {{ device.metrics?.PRESSURE || 0 }}
+                    <span class="metric-unit">hPa</span>
+                  </div>
+                </div>
               </div>
             </div>
             
             <!-- 室外环境检测仪的风速和风向 -->
             <div v-if="device.name.includes('室外')" class="metric-row">
               <div class="metric-item">
-                <div class="metric-label">风速</div>
-                <div class="metric-value">{{ device.metrics?.WIND_SPEED || 0 }}m/s</div>
+                <div class="metric-icon">
+                  <a-icon type="thunderbolt" />
+                </div>
+                <div class="metric-content">
+                  <div class="metric-label">风速</div>
+                  <div class="metric-value wind-speed">
+                    {{ device.metrics?.WIND_SPEED || 0 }}
+                    <span class="metric-unit">m/s</span>
+                  </div>
+                </div>
               </div>
               <div class="metric-item">
-                <div class="metric-label">风向</div>
-                <div class="metric-value">{{ device.metrics?.WIND_DIRECTION || 0 }}°</div>
+                <div class="metric-icon">
+                  <a-icon type="compass" />
+                </div>
+                <div class="metric-content">
+                  <div class="metric-label">风向</div>
+                  <div class="metric-value wind-direction">
+                    {{ device.metrics?.WIND_DIRECTION || 0 }}
+                    <span class="metric-unit">°</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1676,19 +1721,21 @@ onMounted(async () => {
 /* 设备卡片网格 */
 .device-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
 }
 
 .device-card {
   background: #ffffff;
   border-radius: 16px;
-  padding: 24px;
+  padding: 20px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
   transition: all 0.3s ease;
   border: 2px solid #f8f9fa;
   position: relative;
   overflow: hidden;
+  height: fit-content;
+  min-height: 280px;
 }
 
 .device-card:hover {
@@ -1743,7 +1790,7 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .device-info {
@@ -1826,22 +1873,34 @@ onMounted(async () => {
 }
 
 .device-metrics {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .metric-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.metric-row-single {
+  grid-template-columns: 1fr;
+  justify-items: center;
+}
+
+.metric-item-center {
+  max-width: 200px;
+  justify-content: center;
+  text-align: center;
 }
 
 .metric-item {
   background: #f8f9fa;
   border-radius: 12px;
-  padding: 18px;
+  padding: 14px;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   transition: all 0.3s ease;
   border: 1px solid #e9ecef;
 }
@@ -1911,9 +1970,22 @@ onMounted(async () => {
   color: #00b894;
 }
 
+.pressure {
+  color: #6c5ce7;
+}
+
+.wind-speed {
+  color: #fd79a8;
+}
+
+.wind-direction {
+  color: #fdcb6e;
+}
+
 .device-footer {
   border-top: 1px solid #f0f0f0;
-  padding-top: 16px;
+  padding-top: 12px;
+  margin-top: 8px;
 }
 
 .update-info {

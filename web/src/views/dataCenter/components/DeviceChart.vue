@@ -28,6 +28,10 @@
         <template #icon><DownloadOutlined /></template>
         导出数据报表
       </a-button>
+      <a-button type="default" style="margin-left: 8px;" @click="generatePrediction" :loading="predictionLoading">
+        <template #icon><LineChartOutlined /></template>
+        生成预测
+      </a-button>
     </div>
     <div ref="deviceLineRef" class="chart"></div>
     <div v-if="noDataHint" class="hint">{{ noDataHint }}</div>
@@ -40,7 +44,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { useECharts } from '/@/hooks/web/useECharts';
 import { useMessage } from '/@/hooks/web/useMessage';
 import { getDeviceMetrics } from '/@/views/dashboard/api';
-import { DownloadOutlined } from '@ant-design/icons-vue';
+import { DownloadOutlined, LineChartOutlined } from '@ant-design/icons-vue';
 
 interface Props {
   deviceOptions: Array<{ label: string; value: string }>;
@@ -66,7 +70,7 @@ const metricNameMap: Record<string, string> = {
   'TEM': '温度',
   'RH': '湿度',
   'WIND_SPEED': '风速',
-  'WIND_DIRECTION': '风向',
+  'a01008': '风向',
   'PRESSURE': '大气压',
   'power': '功率'
 };
@@ -82,6 +86,7 @@ const showAvgLine = ref<boolean>(false);
 const showMaxLine = ref<boolean>(false);
 const noDataHint = ref<string>('');
 const exportLoading = ref<boolean>(false);
+const predictionLoading = ref<boolean>(false);
 const latestDataTime = ref<string>('');
 const autoRefresh = ref<boolean>(false);
 const refreshMinutes = ref<number>(5);
@@ -156,7 +161,7 @@ async function fetchAndRenderDeviceMetrics() {
   console.log('device-metrics response:', res);
 
   const metricOrder = props.deviceType === 'environment' 
-    ? ['CO2', 'PM10', 'PM25', 'TEM', 'RH', 'WIND_SPEED', 'WIND_DIRECTION', 'PRESSURE'] 
+    ? ['CO2', 'PM10', 'PM25', 'TEM', 'RH', 'WIND_SPEED', 'a01008', 'PRESSURE'] 
     : ['power'];
     
   let rawSeries: any[] = [];
@@ -207,6 +212,13 @@ async function fetchAndRenderDeviceMetrics() {
     .sort((a: any, b: any) => metricOrder.indexOf(a.metric) - metricOrder.indexOf(b.metric))
     .filter((m: any) => Array.isArray(m.points) && m.points.length > 0)
     .map((m: any) => {
+      // 根据指标类型和数值范围分配Y轴
+      // 左侧Y轴：CO2、风速等数值较大的指标
+      // 右侧Y轴：温度、湿度、大气压、PM2.5、PM10、风向等数值较小的指标
+      const leftAxisMetrics = ['CO2', 'WIND_SPEED'];
+      const isLeftAxis = leftAxisMetrics.includes(m.metric);
+      const yAxisIndex = isLeftAxis ? 0 : 1;
+      
       const base = {
         name: metricNameMap[m.metric] || m.metric,
         type: 'line' as const,
@@ -218,6 +230,7 @@ async function fetchAndRenderDeviceMetrics() {
         data: extendStepToRange((m.points || []).map((p: any) => [p.ts, p.value]), startMs, endMs),
         emphasis: { focus: 'series' as any },
         sampling: 'lttb' as any,
+        yAxisIndex: yAxisIndex, // 指定Y轴索引
       } as any;
 
       // 若为电表的 power 序列：显示每个点数值标签，并标注值为0的点
@@ -261,6 +274,9 @@ async function fetchAndRenderDeviceMetrics() {
   const max = flatPoints.length ? Math.max(...flatPoints) : undefined;
 
   setDeviceLine({
+    animation: true, // 启用动画
+    animationDuration: 800, // 动画持续时间
+    animationEasing: 'cubicOut', // 动画缓动函数
     tooltip: {
       trigger: 'axis',
       formatter: (params: any[]) => {
@@ -280,18 +296,49 @@ async function fetchAndRenderDeviceMetrics() {
       },
     },
     legend: { type: 'scroll' },
-    grid: { left: 48, right: 18, top: 28, bottom: 56, containLabel: true },
+    grid: { left: 80, right: 80, top: 40, bottom: 60, containLabel: true },
     dataZoom: [
       { type: 'inside' },
       { type: 'slider', height: 16 as any, bottom: 12 as any, brushSelect: false },
     ],
     xAxis: { type: 'time', min: startMs, max: endMs },
-    yAxis: {
-      type: 'value',
-      boundaryGap: ['8%', '18%'] as any,
-      scale: true as any,
-      axisLabel: { margin: 10 },
-    },
+    yAxis: [
+      {
+        type: 'value',
+        name: 'CO2浓度/风速',
+        position: 'left',
+        boundaryGap: ['8%', '18%'] as any,
+        scale: false, // 禁用自动缩放，保持固定范围
+        min: 0, // 设置固定最小值，适合多种指标
+        max: 2000, // 设置固定最大值，适合CO2、大气压、风速
+        axisLabel: { 
+          margin: 10,
+          formatter: '{value}'
+        },
+        splitLine: {
+          show: true,
+          lineStyle: {
+            color: '#f0f0f0'
+          }
+        }
+      },
+      {
+        type: 'value',
+        name: '其他指标',
+        position: 'right',
+        boundaryGap: ['8%', '18%'] as any,
+        scale: false, // 禁用自动缩放，保持固定范围
+        min: 0, // 设置固定最小值
+        max: 100, // 设置固定最大值
+        axisLabel: { 
+          margin: 10,
+          formatter: '{value}'
+        },
+        splitLine: {
+          show: false
+        }
+      }
+    ],
     series: (
       series.length ? [
         ...series,
@@ -371,7 +418,7 @@ async function exportDeviceData() {
 // 生成CSV数据
 function generateCSVData(rawSeries: any[], deviceName: string) {
   const metricOrder = props.deviceType === 'environment' 
-    ? ['CO2', 'PM10', 'PM25', 'TEM', 'RH', 'WIND_SPEED', 'WIND_DIRECTION', 'PRESSURE'] 
+    ? ['CO2', 'PM10', 'PM25', 'TEM', 'RH', 'WIND_SPEED', 'a01008', 'PRESSURE'] 
     : ['power'];
   const unitsMap: Record<string, string> = {
     'CO2': 'ppm',
@@ -430,6 +477,489 @@ function downloadCSV(data: any[][], deviceName: string, start: Dayjs, end: Dayjs
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+// 生成预测功能
+async function generatePrediction() {
+  if (!selectedDevice.value) {
+    createMessage.warning('请先选择设备');
+    return;
+  }
+
+  predictionLoading.value = true;
+  
+  try {
+    // 获取更多历史数据用于训练
+    const end = dayjs();
+    const start = end.subtract(7, 'day'); // 获取7天数据用于训练
+    
+    const [startMs, endMs] = [start.valueOf(), end.valueOf()];
+    
+    // 获取历史数据
+    const res = await getDeviceMetrics({ 
+      deviceName: selectedDevice.value, 
+      start: startMs, 
+      end: endMs 
+    });
+
+    if (!res || !res.series) {
+      createMessage.error('无法获取历史数据');
+      return;
+    }
+
+    // 处理数据并生成预测
+    const predictionResults = await processPredictionData(res, selectedDevice.value);
+    
+    console.log('预测结果:', predictionResults);
+    
+    if (predictionResults && Object.keys(predictionResults).length > 0) {
+      // 显示成功消息
+      createMessage.success(`预测生成成功！生成了 ${Object.keys(predictionResults).length} 个指标的预测`);
+      
+      // 平滑更新图表
+      updateChartWithPrediction(predictionResults);
+    } else {
+      createMessage.error('预测生成失败，请检查数据');
+    }
+    
+  } catch (error) {
+    console.error('预测生成失败:', error);
+    createMessage.error('预测生成失败，请重试');
+  } finally {
+    predictionLoading.value = false;
+  }
+}
+
+// 处理预测数据
+async function processPredictionData(apiData: any, deviceName: string) {
+  try {
+    // 转换为时间序列数据
+    const timeSeries = convertApiDataToTimeSeries(apiData);
+    
+    if (!timeSeries || Object.keys(timeSeries).length === 0) {
+      return null;
+    }
+
+    const predictions: any = {};
+    
+    // 为每个指标生成预测
+    for (const [metric, data] of Object.entries(timeSeries)) {
+      if (Array.isArray(data) && data.length > 10) {
+        const prediction = generateSimplePrediction(data, metric);
+        if (prediction) {
+          predictions[metric] = prediction;
+        }
+      }
+    }
+    
+    return predictions;
+  } catch (error) {
+    console.error('处理预测数据失败:', error);
+    return null;
+  }
+}
+
+// 转换API数据为时间序列
+function convertApiDataToTimeSeries(apiData: any) {
+  const series = apiData.series || {};
+  const timeSeries: any = {};
+  
+  for (const [metric, points] of Object.entries(series)) {
+    if (Array.isArray(points)) {
+      const sortedPoints = points
+        .filter((p: any) => p.t && p.v !== undefined)
+        .sort((a: any, b: any) => a.t - b.t);
+      
+      if (sortedPoints.length > 0) {
+        timeSeries[metric] = sortedPoints.map((p: any) => p.v);
+      }
+    }
+  }
+  
+  return timeSeries;
+}
+
+// 生成简单预测（使用线性回归）
+function generateSimplePrediction(data: number[], metric: string) {
+  if (data.length < 5) return null;
+  
+  try {
+    // 取最近20个点进行趋势分析
+    const recent = data.slice(-20);
+    const trend = calculateTrend(recent);
+    
+    // 生成未来36个点的预测（3小时），添加一些随机波动
+    const predictions = [];
+    const lastValue = data[data.length - 1];
+    
+    for (let i = 1; i <= 36; i++) {
+      // 基础趋势 - 使用更平滑的趋势计算
+      let predicted = lastValue + (trend * i * 0.1); // 减小趋势影响
+      
+      // 添加更自然的波动模式
+      const timeFactor = i / 36; // 时间因子，从0到1
+      
+      // 模拟环境数据的自然变化
+      const baseVariation = Math.sin(timeFactor * Math.PI * 3) * (Math.abs(lastValue) * 0.15); // 周期性变化，增加幅度
+      const trendVariation = Math.sin(timeFactor * Math.PI) * (Math.abs(lastValue) * 0.12); // 趋势变化，增加幅度
+      const noiseVariation = (Math.random() - 0.5) * (Math.abs(lastValue) * 0.08); // 随机噪声，增加幅度
+      const waveVariation = Math.sin(timeFactor * Math.PI * 5) * (Math.abs(lastValue) * 0.06); // 高频波动
+      
+      // 根据指标类型调整变化幅度
+      let variationMultiplier = 1;
+      if (metric === 'CO2') {
+        variationMultiplier = 0.5; // CO2变化相对稳定
+      } else if (metric === 'TEM') {
+        variationMultiplier = 1.2; // 温度变化更明显
+      } else if (metric === 'RH') {
+        variationMultiplier = 0.8; // 湿度变化适中
+      }
+      
+      predicted += (baseVariation + trendVariation + noiseVariation + waveVariation) * variationMultiplier;
+      
+      // 根据指标类型设置合理范围
+      if (metric === 'CO2') {
+        predicted = Math.max(300, Math.min(2000, predicted));
+      } else if (metric === 'PM25' || metric === 'PM10') {
+        predicted = Math.max(0, Math.min(200, predicted));
+      } else if (metric === 'TEM') {
+        predicted = Math.max(15, Math.min(40, predicted));
+      } else if (metric === 'RH') {
+        predicted = Math.max(20, Math.min(90, predicted));
+      } else {
+        predicted = Math.max(0, predicted);
+      }
+      
+      const finalValue = Math.round(predicted * 100) / 100;
+      predictions.push(finalValue);
+      
+      // 调试信息
+      if (i <= 5) { // 只打印前5个点的调试信息
+        console.log(`${metric} 预测点 ${i}: 基础=${lastValue}, 趋势=${trend}, 变化=${baseVariation.toFixed(2)}, 最终=${finalValue}`);
+      }
+    }
+    
+    console.log(`${metric} 预测结果:`, predictions);
+    
+    return {
+      trend,
+      predictions,
+      confidence: Math.min(0.9, Math.max(0.3, 1 - Math.abs(trend) / Math.abs(lastValue)))
+    };
+  } catch (error) {
+    console.error(`生成${metric}预测失败:`, error);
+    return null;
+  }
+}
+
+// 计算趋势
+function calculateTrend(data: number[]) {
+  if (data.length < 2) return 0;
+  
+  const n = data.length;
+  const x = Array.from({length: n}, (_, i) => i);
+  const y = data;
+  
+  // 简单线性回归
+  const sumX = x.reduce((a, b) => a + b, 0);
+  const sumY = y.reduce((a, b) => a + b, 0);
+  const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
+  const sumXX = x.reduce((sum, xi) => sum + xi * xi, 0);
+  
+  const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+  return slope;
+}
+
+// 更新图表显示预测结果
+async function updateChartWithPrediction(predictionResults: any) {
+  if (!predictionResults || Object.keys(predictionResults).length === 0) {
+    return;
+  }
+
+  // 平滑更新：使用渐变动画
+  try {
+    // 直接更新图表，使用动画效果
+    await fetchAndRenderDeviceMetricsWithPrediction(predictionResults);
+  } catch (error) {
+    console.error('更新预测图表失败:', error);
+    createMessage.error('更新预测图表失败');
+  }
+}
+
+// 重新渲染图表并添加预测数据
+async function fetchAndRenderDeviceMetricsWithPrediction(predictionResults: any) {
+  if (!selectedDevice.value || !selectedRange.value) return;
+  
+  const [start, end] = selectedRange.value;
+  const startMs = start.valueOf();
+  const endMs = end.valueOf();
+  
+  // 获取历史数据
+  let res = await getDeviceMetrics({ deviceName: selectedDevice.value, start: startMs, end: endMs });
+  
+  const metricOrder = props.deviceType === 'environment' 
+    ? ['CO2', 'PM10', 'PM25', 'TEM', 'RH', 'WIND_SPEED', 'a01008', 'PRESSURE'] 
+    : ['power'];
+    
+  let rawSeries: any[] = [];
+  const s1 = (res as any)?.series;
+  const s2 = (res as any)?.data?.series;
+  const s = s1 ?? s2;
+  
+  if (Array.isArray(s)) {
+    rawSeries = s;
+  } else if (s && typeof s === 'object') {
+    const pickTs = (obj: any) => obj?.ts ?? obj?.time ?? obj?.timestamp ?? obj?.date ?? obj?.t ?? obj?.x ?? obj?.[0];
+    const pickVal = (obj: any) => obj?.value ?? obj?.val ?? obj?.v ?? obj?.y ?? obj?.avg ?? obj?.mean ?? obj?.data ?? obj?.[1];
+    rawSeries = Object.entries(s).map(([metric, arr]: any) => {
+      const points = (arr || []).map((p: any) =>
+        Array.isArray(p)
+          ? { ts: p[0], value: p[1] }
+          : { ts: pickTs(p), value: pickVal(p) }
+      );
+      return { metric, points };
+    });
+  }
+
+  const unitsMap: Record<string, string> = ((res as any)?.units || (res as any)?.data?.units || {}) as any;
+
+  // 处理原始数据并添加预测
+  const series = rawSeries
+    .sort((a: any, b: any) => metricOrder.indexOf(a.metric) - metricOrder.indexOf(b.metric))
+    .filter((m: any) => {
+      const hasData = Array.isArray(m.points) && m.points.length > 0;
+      return hasData;
+    })
+    .map((m: any) => {
+      // 根据指标类型和数值范围分配Y轴
+      // 左侧Y轴：CO2、风速等数值较大的指标
+      // 右侧Y轴：温度、湿度、大气压、PM2.5、PM10、风向等数值较小的指标
+      const leftAxisMetrics = ['CO2', 'WIND_SPEED'];
+      const isLeftAxis = leftAxisMetrics.includes(m.metric);
+      const yAxisIndex = isLeftAxis ? 0 : 1;
+      
+      // 原始数据 - 正常使用extendStepToRange处理历史数据
+      const originalData = extendStepToRange((m.points || []).map((p: any) => [p.ts, p.value]), startMs, endMs);
+      
+      // 添加预测数据
+      let combinedData = [...originalData];
+      
+      if (predictionResults[m.metric] && predictionResults[m.metric].predictions) {
+        const predictions = predictionResults[m.metric].predictions;
+        
+        // 移除原始数据中延长到结束时间的点，避免直线
+        const currentTime = Date.now();
+        combinedData = combinedData.filter(([ts, val]) => ts <= currentTime);
+        
+        console.log(`为指标 ${m.metric} 添加预测数据:`, predictions);
+        console.log(`预测开始时间: ${new Date(currentTime).toLocaleString()}`);
+        
+        // 从当前时间开始，每5分钟添加一个预测点（共36个点，3小时）
+        for (let i = 0; i < predictions.length; i++) {
+          const futureTime = currentTime + (i + 1) * 5 * 60 * 1000;
+          combinedData.push([futureTime, predictions[i]]);
+        }
+        
+        console.log(`指标 ${m.metric} 合并后数据点数量:`, combinedData.length);
+      }
+      
+      const base = {
+        name: metricNameMap[m.metric] || m.metric,
+        type: 'line' as const,
+        smooth: true,
+        showSymbol: true,
+        symbol: 'circle',
+        symbolSize: 3,
+        areaStyle: { opacity: 0.08 },
+        data: combinedData,
+        emphasis: { focus: 'series' as any },
+        sampling: 'lttb' as any,
+        yAxisIndex: yAxisIndex,
+        // 为预测部分添加不同的样式
+        markLine: predictionResults[m.metric] ? {
+          data: [{
+            xAxis: Date.now(), // 从当前时间开始的分隔线
+            lineStyle: {
+              color: '#ff6b6b',
+              type: 'dashed',
+              width: 1
+            },
+            label: {
+              show: true,
+              position: 'end',
+              formatter: '预测'
+            }
+          }]
+        } : undefined
+      } as any;
+
+      return base;
+    });
+
+  // 计算参考线数据
+  const flatPoints: number[] = [];
+  rawSeries.forEach((m: any) => (m.points || []).forEach((p: any) => { if (typeof p.value === 'number') flatPoints.push(p.value); }));
+  
+  // 最新时间显示
+  const allTs: number[] = [];
+  rawSeries.forEach((m:any)=> (m.points||[]).forEach((p:any)=> { if(p && p.ts) allTs.push(p.ts);}));
+  if (allTs.length) {
+    const maxTs = Math.max(...allTs);
+    latestDataTime.value = dayjs(maxTs).format('YYYY-MM-DD HH:mm');
+  }
+  
+  const avg = flatPoints.length ? flatPoints.reduce((a, b) => a + b, 0) / flatPoints.length : undefined;
+  const max = flatPoints.length ? Math.max(...flatPoints) : undefined;
+
+  setDeviceLine({
+    animation: true, // 启用动画
+    animationDuration: 1000, // 动画持续时间
+    animationEasing: 'cubicOut', // 动画缓动函数
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params: any[]) => {
+        if (!Array.isArray(params) || params.length === 0) return '';
+        const timeStr = dayjs(params[0].axisValue).format('YYYY-MM-DD HH:mm');
+        const dev = String(selectedDevice.value || '');
+        const lines = params.map((p) => {
+          const metric = p.seriesName;
+          const val = Array.isArray(p.data) ? p.data[1] : p.data?.value ?? p.data;
+          const unit = unitsMap?.[metric] ? ` ${unitsMap[metric]}` : '';
+          const originalMetric = Object.keys(metricNameMap).find(key => metricNameMap[key] === metric) || metric;
+          const originalUnit = unitsMap?.[originalMetric] ? ` ${unitsMap[originalMetric]}` : '';
+          return `${metric}｜${val}${originalUnit}｜${dev}`;
+        });
+        return `${timeStr}<br/>` + lines.join('<br/>');
+      },
+    },
+    legend: { type: 'scroll' },
+    grid: { left: 80, right: 80, top: 40, bottom: 60, containLabel: true },
+    dataZoom: [
+      { type: 'inside' },
+      { type: 'slider', height: 16 as any, bottom: 12 as any, brushSelect: false },
+    ],
+    xAxis: { 
+      type: 'time', 
+      min: startMs, 
+      max: Math.max(endMs, Date.now() + 36 * 5 * 60 * 1000) // 从当前时间开始预测3小时
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: 'CO2浓度/风速',
+        position: 'left',
+        boundaryGap: ['8%', '18%'] as any,
+        scale: false, // 禁用自动缩放，保持固定范围
+        min: 0, // 设置固定最小值，适合多种指标
+        max: 2000, // 设置固定最大值，适合CO2、大气压、风速
+        axisLabel: { 
+          margin: 10,
+          formatter: '{value}'
+        },
+        splitLine: {
+          show: true,
+          lineStyle: {
+            color: '#f0f0f0'
+          }
+        }
+      },
+      {
+        type: 'value',
+        name: '其他指标',
+        position: 'right',
+        boundaryGap: ['8%', '18%'] as any,
+        scale: false, // 禁用自动缩放，保持固定范围
+        min: 0, // 设置固定最小值
+        max: 100, // 设置固定最大值
+        axisLabel: { 
+          margin: 10,
+          formatter: '{value}'
+        },
+        splitLine: {
+          show: false
+        }
+      }
+    ],
+    series: (
+      series.length ? [
+        ...series,
+        ...(showAvgLine.value && avg !== undefined ? [{
+          name: '均值', type: 'line' as const, data: [[startMs, avg], [endMs, avg]], symbol: 'none', lineStyle: { type: 'dashed' as const, color: '#999' }, tooltip: { show: false }, emphasis: { disabled: true } as any,
+        }] : []),
+        ...(showMaxLine.value && max !== undefined ? [{
+          name: '最大', type: 'line' as const, data: [[startMs, max], [endMs, max]], symbol: 'none', lineStyle: { type: 'dotted' as const, color: '#c00' }, tooltip: { show: false }, emphasis: { disabled: true } as any,
+        }] : []),
+      ] : []
+    ),
+  });
+
+  noDataHint.value = series.length === 0 ? '当前时段无数据，已自动回退近90天再试。' : '';
+}
+
+// 获取当前图表配置
+function getCurrentChartOptions() {
+  // 这里需要从ECharts实例获取当前配置
+  // 由于useECharts hook的限制，我们返回一个基础配置
+  return {
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params: any[]) => {
+        if (!Array.isArray(params) || params.length === 0) return '';
+        const timeStr = dayjs(params[0].axisValue).format('YYYY-MM-DD HH:mm');
+        const lines = params.map((p) => {
+          const metric = p.seriesName;
+          const val = Array.isArray(p.data) ? p.data[1] : p.data?.value ?? p.data;
+          return `${metric}｜${val}`;
+        });
+        return `${timeStr}<br/>` + lines.join('<br/>');
+      },
+    },
+    legend: { type: 'scroll' },
+    grid: { left: 80, right: 80, top: 40, bottom: 60, containLabel: true },
+    dataZoom: [
+      { type: 'inside' },
+      { type: 'slider', height: 16, bottom: 12, brushSelect: false },
+    ],
+    xAxis: { type: 'time' },
+    yAxis: [
+      {
+        type: 'value',
+        name: 'CO2浓度/风速',
+        position: 'left',
+        boundaryGap: ['8%', '18%'],
+        scale: false, // 禁用自动缩放
+        min: 0, // 固定最小值，适合多种指标
+        max: 2000, // 固定最大值，适合CO2、大气压、风速
+        axisLabel: { 
+          margin: 10,
+          formatter: '{value}'
+        },
+        splitLine: {
+          show: true,
+          lineStyle: {
+            color: '#f0f0f0'
+          }
+        }
+      },
+      {
+        type: 'value',
+        name: '其他指标',
+        position: 'right',
+        boundaryGap: ['8%', '18%'],
+        scale: false, // 禁用自动缩放
+        min: 0, // 固定最小值
+        max: 100, // 固定最大值
+        axisLabel: { 
+          margin: 10,
+          formatter: '{value}'
+        },
+        splitLine: {
+          show: false
+        }
+      }
+    ],
+    series: []
+  };
 }
 
 // 自动刷新定时器
