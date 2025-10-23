@@ -198,7 +198,7 @@ const loadKnowledgeBases = async () => {
 
 // 打开外部 NextChat 实例
 const buildTrustragUiUrl = () => {
-  return 'http://localhost:3600/';
+  return 'http://1118qg49520ma.vicp.fun';
 };
 
 const onDatasetChange = async (value: string) => {

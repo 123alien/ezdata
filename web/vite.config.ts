@@ -77,7 +77,14 @@ export default ({ command, mode }: ConfigEnv): UserConfig => {
       host: true,
       // @ts-ignore
       https: false,
-      port: 5178,
+      port: 5179,
+      // 允许花生壳域名访问
+      allowedHosts: [
+        '1118qg49520ma.vicp.fun',
+        'localhost',
+        '127.0.0.1',
+        '192.168.1.98'
+      ],
       // Load proxy configuration from .env
       proxy: {
         ...createProxy(VITE_PROXY),
