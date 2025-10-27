@@ -32,74 +32,33 @@ def _get_trustrag_base_url() -> str:
 
 def _resolve_namespace_by_dataset(dataset_id: Any) -> Optional[str]:
     """根据 dataset_id(UUID) 解析 namespace：
-    1) 通过 Dataset(id) 找到 name/create_by
-    2) 映射到 UserKnowledgeBase(name, owner_id)
-    3) 用 UserKnowledgeBase.id 去查 KnowledgeBaseBinding.kb_id
-    4) 如果上述方法失败，尝试直接通过数据集ID查找绑定关系
+    直接从 rag_kb_binding 表查询，kb_id 就是 dataset_id
     """
     try:
         from web_apps import db
-        from web_apps.rag.db_models import Dataset
-        from web_apps.rag.kb_models import KnowledgeBaseBinding, UserKnowledgeBase
+        from sqlalchemy import text
 
-        # 方法1：通过数据集名称和创建者查找知识库
-        dataset = (
-            db.session.query(Dataset)
-            .filter(Dataset.id == dataset_id, Dataset.del_flag == 0)
-            .first()
-        )
-        if dataset:
-            kb = (
-                db.session.query(UserKnowledgeBase)
-                .filter(
-                    UserKnowledgeBase.name == dataset.name,
-                    UserKnowledgeBase.owner_id == dataset.create_by,
-                    UserKnowledgeBase.del_flag == 0,
-                )
-                .first()
-            )
-            if kb:
-                binding = (
-                    db.session.query(KnowledgeBaseBinding)
-                    .filter(
-                        KnowledgeBaseBinding.kb_id == kb.id,
-                        KnowledgeBaseBinding.del_flag == 0,
-                    )
-                    .first()
-                )
-                if binding and binding.namespace:
-                    return binding.namespace
-
-        # 方法2：直接通过数据集ID查找绑定关系（新增）
-        # 假设数据集ID直接对应知识库ID，或者通过其他方式关联
-        try:
-            # 尝试将数据集ID转换为整数（如果是数字的话）
-            kb_id = int(dataset_id) if dataset_id.isdigit() else None
-            if kb_id:
-                binding = (
-                    db.session.query(KnowledgeBaseBinding)
-                    .filter(
-                        KnowledgeBaseBinding.kb_id == kb_id,
-                        KnowledgeBaseBinding.del_flag == 0,
-                    )
-                    .first()
-                )
-                if binding and binding.namespace:
-                    current_app.logger.info(f"Found binding for dataset {dataset_id} -> kb_id {kb_id} -> namespace {binding.namespace}")
-                    return binding.namespace
-        except (ValueError, TypeError):
-            pass
-
-        # 方法3：不再使用自动回退到默认命名空间的逻辑
-        # 这样可以避免不同知识库的文档被错误地上传到同一个命名空间
-        # 用户必须明确配置绑定关系才能同步到 TrustRAG
-
-        # 回退到全局默认命名空间，确保一键同步可用
-        default_namespace = current_app.config.get("TRUSTRAG_DEFAULT_NAMESPACE", TRUSTRAG_DEFAULT_NAMESPACE)
-        current_app.logger.info(f"Using default namespace {default_namespace} for dataset {dataset_id}")
-        return default_namespace
+        # 直接查询 rag_kb_binding 表，kb_id 就是 dataset_id
+        sql = text("""
+            SELECT namespace 
+            FROM rag_kb_binding 
+            WHERE kb_id = :dataset_id AND del_flag = 0
+        """)
+        
+        result = db.session.execute(sql, {"dataset_id": dataset_id}).first()
+        
+        if result and result.namespace:
+            current_app.logger.info(f"Found namespace {result.namespace} for dataset {dataset_id}")
+            return result.namespace
+        
+        # 如果没有绑定，返回 None，不自动使用默认命名空间
+        current_app.logger.warning(f"No namespace binding found for dataset {dataset_id}")
+        return None
+        
     except Exception as e:
         current_app.logger.error(f"resolve namespace failed: {e}")
+        import traceback
+        current_app.logger.error(traceback.format_exc())
         return None
 
 
@@ -264,14 +223,35 @@ def bulk_sync_dataset(dataset_id: Any) -> Dict[str, Any]:
         )
 
         results = []
+        namespace = _resolve_namespace_by_dataset(dataset_id)
+        if not namespace:
+            return {"success": False, "message": f"数据集 {dataset_id} 未绑定 TrustRAG namespace，请先绑定索引"}
+        
+        current_app.logger.info(f"Bulk syncing dataset {dataset_id} (namespace: {namespace}), total {len(docs)} documents")
+        
         for d in docs:
-            meta = parse_json(d.meta_data)
-            res = sync_created_document(dataset_id=dataset_id, meta_data=meta)
-            results.append({"doc_id": d.id, **res})
+            try:
+                meta = parse_json(d.meta_data)
+                res = sync_created_document(dataset_id=dataset_id, meta_data=meta)
+                results.append({"doc_id": d.id, "name": d.name, **res})
+                current_app.logger.debug(f"Synced document {d.id}: {res.get('success', False)}")
+            except Exception as e:
+                current_app.logger.error(f"Failed to sync document {d.id}: {e}")
+                results.append({"doc_id": d.id, "name": d.name, "success": False, "message": str(e)})
 
         success_count = sum(1 for r in results if r.get("success"))
-        return {"success": True, "total": len(results), "success_count": success_count, "results": results}
+        current_app.logger.info(f"Bulk sync completed: {success_count}/{len(results)} successful")
+        
+        return {
+            "success": True, 
+            "total": len(results), 
+            "success_count": success_count,
+            "namespace": namespace,
+            "results": results
+        }
     except Exception as e:
         current_app.logger.error(f"bulk_sync_dataset error: {e}")
+        import traceback
+        current_app.logger.error(traceback.format_exc())
         return {"success": False, "message": str(e)}
 
