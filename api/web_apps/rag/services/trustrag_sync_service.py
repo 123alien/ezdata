@@ -90,22 +90,9 @@ def _resolve_namespace_by_dataset(dataset_id: Any) -> Optional[str]:
         except (ValueError, TypeError):
             pass
 
-        # 方法3：查找所有可用的绑定关系，选择第一个（临时解决方案）
-        # 这适用于只有一个知识库的情况
-        all_bindings = (
-            db.session.query(KnowledgeBaseBinding)
-            .filter(KnowledgeBaseBinding.del_flag == 0)
-            .all()
-        )
-        if all_bindings:
-            # 优先选择 ezdata-1，如果没有则选择第一个
-            for binding in all_bindings:
-                if binding.namespace == "ezdata-1":
-                    current_app.logger.info(f"Using ezdata-1 namespace for dataset {dataset_id}")
-                    return binding.namespace
-            # 如果没有找到 ezdata-1，使用第一个可用的
-            current_app.logger.info(f"Using first available namespace {all_bindings[0].namespace} for dataset {dataset_id}")
-            return all_bindings[0].namespace
+        # 方法3：不再使用自动回退到默认命名空间的逻辑
+        # 这样可以避免不同知识库的文档被错误地上传到同一个命名空间
+        # 用户必须明确配置绑定关系才能同步到 TrustRAG
 
         # 回退到全局默认命名空间，确保一键同步可用
         default_namespace = current_app.config.get("TRUSTRAG_DEFAULT_NAMESPACE", TRUSTRAG_DEFAULT_NAMESPACE)
