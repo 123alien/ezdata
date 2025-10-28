@@ -102,7 +102,7 @@
             :action="ossUploadAction"
             :headers="tokenHeader"
             :show-upload-list="false"
-            accept=".pdf,.doc,.docx,.txt,.md"
+            accept=".pdf,.doc,.docx,.txt,.md,.xlsx,.xls,.csv"
             @change="handleOssUploadChange"
           >
             <a-button type="primary">
