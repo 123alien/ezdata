@@ -64,7 +64,7 @@
   }); // 查询配置
   const pagination = reactive({
     current: 1,
-    pageSize: 100,
+    pageSize: 1000,
     pageSizeOptions: ['100', '500', '1000', '2000', '5000', '10000'],
     total: 0,
   });
@@ -76,7 +76,7 @@
     queryInfo.extract_rules = [];
     queryInfo.search_type_list = [];
     queryInfo.fields = [];
-    pagination.pageSize = 100;
+    pagination.pageSize = 1000;
     pagination.current = 1;
   }
   /** 获取值，忽略表单验证 */
