@@ -65,7 +65,7 @@
   const pagination = reactive({
     current: 1,
     pageSize: 1000,
-    pageSizeOptions: ['100', '500', '1000', '2000', '5000', '10000'],
+    pageSizeOptions: ['50', '100', '500', '1000', '2000', '5000', '10000'],
     total: 0,
   });
   const hidePagination = ref(false);
@@ -85,7 +85,8 @@
     console.log(event);
     // 重新赋值
     pagination.current = event.current;
-    pagination.pageSize = event.pageSize;
+    // 确保页面大小不会过小（最小值1000）
+    pagination.pageSize = Math.max(event.pageSize, 1000);
     // 查询数据
     await fetchData(false);
   }
