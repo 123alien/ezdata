@@ -6,8 +6,8 @@ import { Pagination } from 'ant-design-vue';
 export function usePagination(props: JVxeTableProps, methods: JVxeTableMethods) {
   const innerPagination = reactive({
     current: 1,
-    pageSize: 10,
-    pageSizeOptions: ['10', '20', '30'],
+    pageSize: 1000,
+    pageSizeOptions: ['50', '100', '500', '1000', '2000', '5000', '10000'],
     showTotal: (total, range) => {
       return range[0] + '-' + range[1] + ' 共 ' + total + ' 条';
     },
