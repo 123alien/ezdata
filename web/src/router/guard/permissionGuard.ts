@@ -139,13 +139,18 @@ export function createPermissionGuard(router: Router) {
         console.log("to.path 2",to.path)
         
         let getFullPath = to.fullPath;
-        // 防止重定向循环：检查路径中是否包含多个 /login?redirect= 
+        // 防止重定向循环：检查路径中是否包含多个 /login?redirect=
+        // 计算 redirect= 出现的次数，如果超过2次说明有循环
+        const redirectCount = (getFullPath.match(/redirect=/g) || []).length;
         const redirectLoopPattern = /\/login\?redirect=.*\/login\?redirect=/;
+        const isLoginPage = to.path === '/login' || to.path === '/login.html';
+        
         if(getFullPath=='/' || getFullPath=='/500' || getFullPath=='/400' || 
-           getFullPath === '/login' || 
+           isLoginPage || 
            getFullPath.startsWith('/login?redirect=/login') ||
+           redirectCount > 2 ||  // redirect= 出现超过2次说明有嵌套循环
            redirectLoopPattern.test(getFullPath)){
-          console.warn('检测到重定向循环，跳过设置redirect参数');
+          console.warn('检测到重定向循环或登录页，跳过设置redirect参数', { getFullPath, redirectCount, isLoginPage });
           next(redirectData);
           return;
         }
