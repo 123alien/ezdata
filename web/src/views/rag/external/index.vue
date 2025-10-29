@@ -76,11 +76,21 @@
             </a-descriptions-item>
           </a-descriptions>
           <div class="token-display mt-3">
-            <a-alert
-              :message="'访问令牌: ' + ssoToken"
-              type="success"
-              show-icon
-            />
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <a-alert
+                :message="'访问令牌: ' + ssoToken"
+                type="success"
+                show-icon
+                style="flex: 1;"
+              />
+              <a-button
+                type="primary"
+                :icon="h(CopyOutlined)"
+                @click="copyToken"
+              >
+                复制令牌
+              </a-button>
+            </div>
           </div>
         </a-card>
       </div>
@@ -142,13 +152,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, onMounted, h } from 'vue';
 import { PageWrapper } from '/@/components/Page';
 import { message } from 'ant-design-vue';
+import { CopyOutlined } from '@ant-design/icons-vue';
 import {
   generateSSOToken,
   askQuestion,
-  checkTrustRAGHealth,
 } from '/@/api/rag/external.api';
 import { getDatasets as getMyDatasets } from '/@/api/rag/knowledge-base.api';
 import { getSharedWithMe } from '/@/api/rag/knowledge-base.api';
@@ -292,7 +302,11 @@ const askQuickQuestion = async () => {
 
   // 降级走后端（代理）
   try {
-    const result = await askQuestion(quickQuestion.value, selectedDatasetId.value || null, namespace.value || null);
+    const result = await askQuestion(
+      quickQuestion.value, 
+      selectedDatasetId.value || undefined, 
+      namespace.value || undefined
+    );
     if (result.code === 200) {
       if (result.data && result.data.result && result.data.result.response) {
         quickAnswer.value = result.data.result.response;
@@ -353,6 +367,29 @@ const testTrustRAGConnection = async () => {
     message.error('无法连接到 TrustRAG 服务');
   } finally {
     testingConnection.value = false;
+  }
+};
+
+const copyToken = async () => {
+  if (!ssoToken.value) {
+    message.warning('没有可复制的令牌');
+    return;
+  }
+  
+  try {
+    await navigator.clipboard.writeText(ssoToken.value);
+    message.success('令牌已复制到剪贴板');
+  } catch (error) {
+    // 降级方案：使用传统方法
+    const textarea = document.createElement('textarea');
+    textarea.value = ssoToken.value;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+    message.success('令牌已复制到剪贴板');
   }
 };
 
