@@ -37,7 +37,8 @@
   </div>
 </template>
 <script lang="ts" setup>
-  import { computed } from 'vue';
+  import { computed, onMounted } from 'vue';
+  import { useRoute, useRouter } from 'vue-router';
   import { AppLogo } from '/@/components/Application';
   import { AppLocalePicker, AppDarkModeToggle } from '/@/components/Application';
   import LoginForm from './LoginForm.vue';
@@ -64,6 +65,22 @@
   const title = computed(() => globSetting?.title ?? '');
   const { handleBackLogin } = useLoginState();
   handleBackLogin();
+  
+  const route = useRoute();
+  const router = useRouter();
+  
+  // 清理重定向循环：检测并清除URL中的循环redirect参数
+  onMounted(() => {
+    const fullPath = route.fullPath;
+    const redirectCount = (fullPath.match(/redirect=/g) || []).length;
+    const redirectLoopPattern = /\/login\?redirect=.*\/login\?redirect=/;
+    
+    if (redirectCount > 1 || redirectLoopPattern.test(fullPath)) {
+      console.warn('登录页检测到重定向循环，清除URL参数', { fullPath, redirectCount });
+      // 强制替换为干净的登录页URL
+      router.replace({ path: '/login', query: {} });
+    }
+  });
 </script>
 <style lang="less">
   @prefix-cls: ~'@{namespace}-login';
