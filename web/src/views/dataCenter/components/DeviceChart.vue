@@ -1007,6 +1007,13 @@ const setupTimer = () => {
   }
 };
 
+// 监听设备和时间范围变化，自动刷新图表
+watch([selectedDevice, selectedRange], () => {
+  if (selectedDevice.value && selectedRange.value) {
+    fetchAndRenderDeviceMetrics();
+  }
+}, { deep: true });
+
 onMounted(async () => {
   // 默认选择第一个设备
   if (props.deviceOptions.length > 0) {
