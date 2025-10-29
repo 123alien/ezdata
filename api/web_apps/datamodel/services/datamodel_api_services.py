@@ -1062,6 +1062,9 @@ class DataModelApiService(object):
             for code in series_map:
                 series_map[code] = sorted(series_map[code], key=lambda x: x['t'])
             
+            # 判断是否为电表设备
+            is_power_device = '电表' in device_name if device_name else False
+            
             # 指标代码映射：优先使用标准代码，避免重复显示
             metric_priority = {
                 'CO2': ['CO2'],
@@ -1074,29 +1077,63 @@ class DataModelApiService(object):
                 'PRESSURE': ['PRESSURE', 'a01006']
             }
             
-            # 过滤重复指标，只保留优先级最高的
-            filtered_series = {}
-            for standard_name, codes in metric_priority.items():
-                best_code = None
-                best_count = 0
-                for code in codes:
-                    if code in series_map and len(series_map[code]) > best_count:
-                        best_code = code
-                        best_count = len(series_map[code])
-                if best_code:
-                    filtered_series[best_code] = series_map[best_code]
-            
-            # 保留其他指标（如power）以及未在priority中处理的指标
-            for code, data in series_map.items():
-                if code not in filtered_series:
-                    # 只排除已经通过priority处理过的低优先级代码
-                    excluded_codes = []
-                    for standard_name, codes in metric_priority.items():
-                        if len(codes) > 1:  # 如果有多个代码选项
-                            excluded_codes.extend(codes[1:])  # 排除除第一个外的其他代码
+            # 对于电表设备，将所有指标统一映射为power
+            if is_power_device:
+                # 合并所有电表指标数据到power
+                power_series = []
+                power_unit = ''
+                for code, data in series_map.items():
+                    if data:  # 只处理有数据的指标
+                        power_series.extend(data)
+                        # 优先使用kW单位
+                        unit = unit_map.get(code, '')
+                        if 'kW' in unit or 'kw' in unit.lower() or '千瓦' in unit:
+                            power_unit = unit
+                        elif not power_unit and unit:
+                            power_unit = unit
+                
+                # 按时间排序并去重
+                if power_series:
+                    # 按时间戳排序
+                    power_series = sorted(power_series, key=lambda x: x.get('t', 0))
+                    # 简单去重：同一时间戳保留最后一个值
+                    dedup_power = {}
+                    for item in power_series:
+                        ts = item.get('t', 0)
+                        dedup_power[ts] = item
+                    power_series = sorted(dedup_power.values(), key=lambda x: x.get('t', 0))
                     
-                    if code not in excluded_codes:
-                        filtered_series[code] = data
+                    # 统一使用power作为指标名称
+                    series_map = {'power': power_series}
+                    unit_map = {'power': power_unit or 'kW'}
+                    filtered_series = series_map
+                else:
+                    filtered_series = {}
+            else:
+                # 环境监测设备的原有逻辑
+                # 过滤重复指标，只保留优先级最高的
+                filtered_series = {}
+                for standard_name, codes in metric_priority.items():
+                    best_code = None
+                    best_count = 0
+                    for code in codes:
+                        if code in series_map and len(series_map[code]) > best_count:
+                            best_code = code
+                            best_count = len(series_map[code])
+                    if best_code:
+                        filtered_series[best_code] = series_map[best_code]
+                
+                # 保留其他指标以及未在priority中处理的指标
+                for code, data in series_map.items():
+                    if code not in filtered_series:
+                        # 只排除已经通过priority处理过的低优先级代码
+                        excluded_codes = []
+                        for standard_name, codes in metric_priority.items():
+                            if len(codes) > 1:  # 如果有多个代码选项
+                                excluded_codes.extend(codes[1:])  # 排除除第一个外的其他代码
+                        
+                        if code not in excluded_codes:
+                            filtered_series[code] = data
             
             series_map = filtered_series
 
