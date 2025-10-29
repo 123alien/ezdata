@@ -139,7 +139,14 @@ export function createPermissionGuard(router: Router) {
         console.log("to.path 2",to.path)
         
         let getFullPath = to.fullPath;
-        if(getFullPath=='/' || getFullPath=='/500' || getFullPath=='/400' || getFullPath=='/login?redirect=/' || getFullPath=='/login?redirect=/login?redirect=/'){
+        // 防止重定向循环：检查路径中是否包含多个 /login?redirect= 
+        const redirectLoopPattern = /\/login\?redirect=.*\/login\?redirect=/;
+        if(getFullPath=='/' || getFullPath=='/500' || getFullPath=='/400' || 
+           getFullPath === '/login' || 
+           getFullPath.startsWith('/login?redirect=/login') ||
+           redirectLoopPattern.test(getFullPath)){
+          console.warn('检测到重定向循环，跳过设置redirect参数');
+          next(redirectData);
           return;
         }
       //update-end---author:scott ---date:2023-04-24  for：【QQYUN-4713】登录代码调整逻辑有问题，改造待观察--
