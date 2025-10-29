@@ -76,18 +76,17 @@
             </a-descriptions-item>
           </a-descriptions>
           <div class="token-display mt-3">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <a-alert
-                :message="'访问令牌: ' + ssoToken"
-                type="success"
-                show-icon
-                style="flex: 1;"
-              />
+            <a-alert
+              :message="'访问令牌: ' + ssoToken"
+              type="success"
+              show-icon
+            />
+            <div class="token-actions" style="margin-top: 8px;">
               <a-button
                 type="primary"
-                :icon="h(CopyOutlined)"
                 @click="copyToken"
               >
+                <template #icon><CopyOutlined /></template>
                 复制令牌
               </a-button>
             </div>
@@ -152,7 +151,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, h } from 'vue';
+import { ref, onMounted } from 'vue';
 import { PageWrapper } from '/@/components/Page';
 import { message } from 'ant-design-vue';
 import { CopyOutlined } from '@ant-design/icons-vue';
