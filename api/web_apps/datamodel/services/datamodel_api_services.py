@@ -1082,26 +1082,34 @@ class DataModelApiService(object):
                 # 合并所有电表指标数据到power
                 power_series = []
                 power_unit = ''
-                for code, data in series_map.items():
-                    if data:  # 只处理有数据的指标
-                        power_series.extend(data)
-                        # 优先使用kW单位
-                        unit = unit_map.get(code, '')
-                        if 'kW' in unit or 'kw' in unit.lower() or '千瓦' in unit:
-                            power_unit = unit
-                        elif not power_unit and unit:
-                            power_unit = unit
+                
+                # 如果series_map中已经有power，直接使用；否则合并所有指标
+                if 'power' in series_map and series_map['power']:
+                    power_series = series_map['power']
+                    power_unit = unit_map.get('power', 'kW')
+                else:
+                    # 合并所有指标数据到power
+                    for code, data in series_map.items():
+                        if data:  # 只处理有数据的指标
+                            power_series.extend(data)
+                            # 优先使用kW单位
+                            unit = unit_map.get(code, '')
+                            if 'kW' in unit or 'kw' in unit.lower() or '千瓦' in unit:
+                                power_unit = unit
+                            elif not power_unit and unit:
+                                power_unit = unit
                 
                 # 按时间排序并去重
                 if power_series:
                     # 按时间戳排序
-                    power_series = sorted(power_series, key=lambda x: x.get('t', 0))
+                    power_series = sorted(power_series, key=lambda x: x.get('t', 0) if isinstance(x, dict) else 0)
                     # 简单去重：同一时间戳保留最后一个值
                     dedup_power = {}
                     for item in power_series:
-                        ts = item.get('t', 0)
-                        dedup_power[ts] = item
-                    power_series = sorted(dedup_power.values(), key=lambda x: x.get('t', 0))
+                        if isinstance(item, dict):
+                            ts = item.get('t', 0)
+                            dedup_power[ts] = item
+                    power_series = sorted(dedup_power.values(), key=lambda x: x.get('t', 0) if isinstance(x, dict) else 0)
                     
                     # 统一使用power作为指标名称
                     series_map = {'power': power_series}
