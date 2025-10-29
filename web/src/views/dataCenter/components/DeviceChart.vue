@@ -211,12 +211,15 @@ async function fetchAndRenderDeviceMetrics() {
     .sort((a: any, b: any) => metricOrder.indexOf(a.metric) - metricOrder.indexOf(b.metric))
     .filter((m: any) => Array.isArray(m.points) && m.points.length > 0)
     .map((m: any) => {
-      // 根据指标类型和数值范围分配Y轴
-      // 左侧Y轴：CO2、风速等数值较大的指标
-      // 右侧Y轴：温度、湿度、大气压、PM2.5、PM10、风向等数值较小的指标
-      const leftAxisMetrics = ['CO2', 'WIND_SPEED'];
-      const isLeftAxis = leftAxisMetrics.includes(m.metric);
-      const yAxisIndex = isLeftAxis ? 0 : 1;
+      // 根据设备类型和指标类型分配Y轴
+      // 电表设备：所有指标都使用索引0（单Y轴）
+      // 环境监测设备：左侧Y轴（0）- CO2、风速等数值较大的指标；右侧Y轴（1）- 其他指标
+      let yAxisIndex = 0; // 默认使用左侧Y轴
+      if (props.deviceType === 'environment') {
+        const leftAxisMetrics = ['CO2', 'WIND_SPEED'];
+        const isLeftAxis = leftAxisMetrics.includes(m.metric);
+        yAxisIndex = isLeftAxis ? 0 : 1;
+      }
       
       const base = {
         name: metricNameMap[m.metric] || m.metric,
@@ -760,12 +763,15 @@ async function fetchAndRenderDeviceMetricsWithPrediction(predictionResults: any)
       return hasData;
     })
     .map((m: any) => {
-      // 根据指标类型和数值范围分配Y轴
-      // 左侧Y轴：CO2、风速等数值较大的指标
-      // 右侧Y轴：温度、湿度、大气压、PM2.5、PM10、风向等数值较小的指标
-      const leftAxisMetrics = ['CO2', 'WIND_SPEED'];
-      const isLeftAxis = leftAxisMetrics.includes(m.metric);
-      const yAxisIndex = isLeftAxis ? 0 : 1;
+      // 根据设备类型和指标类型分配Y轴
+      // 电表设备：所有指标都使用索引0（单Y轴）
+      // 环境监测设备：左侧Y轴（0）- CO2、风速等数值较大的指标；右侧Y轴（1）- 其他指标
+      let yAxisIndex = 0; // 默认使用左侧Y轴
+      if (props.deviceType === 'environment') {
+        const leftAxisMetrics = ['CO2', 'WIND_SPEED'];
+        const isLeftAxis = leftAxisMetrics.includes(m.metric);
+        yAxisIndex = isLeftAxis ? 0 : 1;
+      }
       
       // 原始数据 - 正常使用extendStepToRange处理历史数据
       const originalData = extendStepToRange((m.points || []).map((p: any) => [p.ts, p.value]), startMs, endMs);
