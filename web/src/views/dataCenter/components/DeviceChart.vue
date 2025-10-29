@@ -70,7 +70,6 @@ const metricNameMap: Record<string, string> = {
   'TEM': '温度',
   'RH': '湿度',
   'WIND_SPEED': '风速',
-  'a01008': '风向',
   'PRESSURE': '大气压',
   'power': '功率'
 };
@@ -302,43 +301,73 @@ async function fetchAndRenderDeviceMetrics() {
       { type: 'slider', height: 16 as any, bottom: 12 as any, brushSelect: false },
     ],
     xAxis: { type: 'time', min: startMs, max: endMs },
-    yAxis: [
-      {
-        type: 'value',
-        name: 'CO2浓度/风速',
-        position: 'left',
-        boundaryGap: ['8%', '18%'] as any,
-        scale: false, // 禁用自动缩放，保持固定范围
-        min: 0, // 设置固定最小值，适合多种指标
-        max: 2000, // 设置固定最大值，适合CO2、大气压、风速
-        axisLabel: { 
-          margin: 10,
-          formatter: '{value}'
+    yAxis: (() => {
+      // 电表设备：使用单Y轴
+      if (props.deviceType === 'power') {
+        // 计算功率数据的最大值，用于设置Y轴范围
+        const powerValues = flatPoints.filter(v => v > 0);
+        const maxPower = powerValues.length > 0 ? Math.max(...powerValues) : 1000;
+        return [
+          {
+            type: 'value',
+            name: '功率(kW)',
+            position: 'left',
+            boundaryGap: ['8%', '18%'] as any,
+            scale: true, // 电表使用自动缩放
+            min: 0,
+            axisLabel: { 
+              margin: 10,
+              formatter: '{value}'
+            },
+            splitLine: {
+              show: true,
+              lineStyle: {
+                color: '#f0f0f0'
+              }
+            }
+          }
+        ];
+      }
+      
+      // 环境监测设备：使用双Y轴
+      return [
+        {
+          type: 'value',
+          name: 'CO2浓度/风速',
+          position: 'left',
+          boundaryGap: ['8%', '18%'] as any,
+          scale: false,
+          min: 0,
+          max: 2000,
+          axisLabel: { 
+            margin: 10,
+            formatter: '{value}'
+          },
+          splitLine: {
+            show: true,
+            lineStyle: {
+              color: '#f0f0f0'
+            }
+          }
         },
-        splitLine: {
-          show: true,
-          lineStyle: {
-            color: '#f0f0f0'
+        {
+          type: 'value',
+          name: '其他指标',
+          position: 'right',
+          boundaryGap: ['8%', '18%'] as any,
+          scale: false,
+          min: 0,
+          max: 100,
+          axisLabel: { 
+            margin: 10,
+            formatter: '{value}'
+          },
+          splitLine: {
+            show: false
           }
         }
-      },
-      {
-        type: 'value',
-        name: '其他指标',
-        position: 'right',
-        boundaryGap: ['8%', '18%'] as any,
-        scale: false, // 禁用自动缩放，保持固定范围
-        min: 0, // 设置固定最小值
-        max: 100, // 设置固定最大值
-        axisLabel: { 
-          margin: 10,
-          formatter: '{value}'
-        },
-        splitLine: {
-          show: false
-        }
-      }
-    ],
+      ];
+    })(),
     series: (
       series.length ? [
         ...series,
@@ -589,7 +618,7 @@ function generateSimplePrediction(data: number[], metric: string) {
     const trend = calculateTrend(recent);
     
     // 生成未来36个点的预测（3小时），添加一些随机波动
-    const predictions = [];
+    const predictions: number[] = [];
     const lastValue = data[data.length - 1];
     
     for (let i = 1; i <= 36; i++) {
