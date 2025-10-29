@@ -235,16 +235,42 @@ async function fetchAndRenderDeviceMetrics() {
         yAxisIndex: yAxisIndex, // 指定Y轴索引
       } as any;
 
-      // 若为电表的 power 序列：显示每个点数值标签，并标注值为0的点
+      // 若为电表的 power 序列：只在数值变化或为0时显示标签
       if (props.deviceType === 'power' && String(m.metric).toLowerCase() === 'power') {
         base.symbolSize = 6;
+        const points = m.points || [];
+        const values = points.map((p: any) => p.value);
+        
+        // 只在数值变化或为0时显示标签
         base.label = {
           show: true,
           color: '#333',
           fontSize: 10,
           formatter: (params: any) => {
-            const d = Array.isArray(params?.data) ? params.data[1] : (params?.data?.value ?? params?.data);
-            return d === 0 || d === '0' ? '0' : String(d ?? '');
+            const dataIndex = params.dataIndex;
+            if (dataIndex === undefined || dataIndex === null) return '';
+            
+            const currentValue = Array.isArray(params?.data) ? params.data[1] : (params?.data?.value ?? params?.data);
+            
+            // 值是否为0
+            if (currentValue === 0 || currentValue === '0') {
+              return '0';
+            }
+            
+            // 检查值是否发生变化
+            if (dataIndex > 0) {
+              const prevValue = values[dataIndex - 1];
+              if (prevValue !== undefined && Math.abs(Number(currentValue) - Number(prevValue)) > 0.01) {
+                // 数值变化超过0.01，显示标签
+                return String(currentValue ?? '');
+              }
+            } else if (dataIndex === 0) {
+              // 第一个点，显示标签
+              return String(currentValue ?? '');
+            }
+            
+            // 数值没有变化，不显示标签
+            return '';
           },
         } as any;
         try {
