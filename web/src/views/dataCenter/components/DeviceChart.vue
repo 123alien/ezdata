@@ -671,6 +671,8 @@ function generateSimplePrediction(data: number[], metric: string) {
         variationMultiplier = 1.2; // 温度变化更明显
       } else if (metric === 'RH') {
         variationMultiplier = 0.8; // 湿度变化适中
+      } else if (metric === 'power' || metric.toLowerCase() === 'power') {
+        variationMultiplier = 0.6; // 电表功率变化相对平滑
       }
       
       predicted += (baseVariation + trendVariation + noiseVariation + waveVariation) * variationMultiplier;
@@ -684,6 +686,9 @@ function generateSimplePrediction(data: number[], metric: string) {
         predicted = Math.max(15, Math.min(40, predicted));
       } else if (metric === 'RH') {
         predicted = Math.max(20, Math.min(90, predicted));
+      } else if (metric === 'power' || metric.toLowerCase() === 'power') {
+        // 电表功率：不能为负，通常不超过当前值的3倍
+        predicted = Math.max(0, Math.min(lastValue * 3 || 10000, predicted));
       } else {
         predicted = Math.max(0, predicted);
       }
