@@ -112,11 +112,11 @@ def fetch_recent_power_meter_data(since_time: datetime = None, limit: int = 100)
 
 
 def format_data_as_text(data_list: List[Dict[str, Any]]) -> str:
-    """将电表数据格式化为文本"""
+    """将电表数据格式化为文本，包含每天的用电量统计"""
     if not data_list:
         return "暂无电表数据"
     
-    lines = ["电表数据汇总", "=" * 60]
+    lines = ["电表数据汇总报告", "=" * 60]
     lines.append(f"数据记录数: {len(data_list)}")
     lines.append(f"更新时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     lines.append("")
@@ -132,20 +132,152 @@ def format_data_as_text(data_list: List[Dict[str, Any]]) -> str:
             }
         devices[device_num]["records"].append(item)
     
-    # 格式化输出
+    # 设备编号与房间对应关系
+    device_room_map = {
+        'XZD20250731': '07室',
+        'XZD20250732': '08室',
+        'XZD20250734': '01室',
+    }
+    
+    # 格式化输出，按日期分组并计算每天用电量
     for device_num, device_info in devices.items():
-        lines.append(f"\n设备编号: {device_num}")
-        lines.append(f"设备名称: {device_info['name']}")
-        lines.append(f"记录数: {len(device_info['records'])}")
+        room_name = device_room_map.get(device_num, '未知')
+        device_name = device_info['name']
+        
+        lines.append(f"\n【设备信息】")
+        lines.append(f"设备编号: {device_num}")
+        lines.append(f"设备名称: {device_name}")
+        lines.append(f"房间名称: {room_name} (可用'{room_name}'或'{device_name}'或'{device_num}'查询)")
+        lines.append(f"总记录数: {len(device_info['records'])}")
         lines.append("")
-        lines.append("历史数据:")
-        for record in sorted(device_info['records'], key=lambda x: x.get('update_time', ''), reverse=True):
-            power = record.get('power')
-            unit = record.get('unit', 'kW')
+        
+        # 按日期分组
+        daily_data = {}
+        sorted_records = sorted(device_info['records'], key=lambda x: x.get('update_time', ''))
+        
+        for record in sorted_records:
             time_str = record.get('update_time', '')
-            if power is not None:
-                lines.append(f"  时间: {time_str}, 功率: {power:.2f} {unit}")
+            if not time_str:
+                continue
+            try:
+                record_time = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+                date_key = record_time.strftime("%Y-%m-%d")
+                if date_key not in daily_data:
+                    daily_data[date_key] = []
+                daily_data[date_key].append(record)
+            except:
+                continue
+        
+        # 计算每天的用电量
+        lines.append("【每日用电量统计】")
+        if daily_data:
+            for date_key in sorted(daily_data.keys(), reverse=True):
+                day_records = daily_data[date_key]
+                if len(day_records) < 2:
+                    # 如果只有一条记录，无法计算用电量
+                    lines.append(f"\n日期: {date_key}")
+                    lines.append(f"  记录数: {len(day_records)}")
+                    if day_records:
+                        power = day_records[0].get('power')
+                        if power is not None:
+                            lines.append(f"  瞬时功率: {power:.2f} kW")
+                    lines.append(f"  说明: 数据不足，无法计算当日用电量")
+                else:
+                    # 计算当天用电量
+                    sorted_day_records = sorted(day_records, key=lambda x: x.get('update_time', ''))
+                    first_record = sorted_day_records[0]
+                    last_record = sorted_day_records[-1]
+                    first_value = first_record.get('power', 0)
+                    last_value = last_record.get('power', 0)
+                    first_time_str = first_record.get('update_time', '')
+                    last_time_str = last_record.get('update_time', '')
+                    
+                    try:
+                        first_time = datetime.strptime(first_time_str, "%Y-%m-%d %H:%M:%S")
+                        last_time = datetime.strptime(last_time_str, "%Y-%m-%d %H:%M:%S")
+                        hours = (last_time - first_time).total_seconds() / 3600
+                        
+                        # 判断数据类型：如果数值持续递增或保持稳定，可能是累积电量（度数）
+                        # 如果数值波动较大，可能是瞬时功率
+                        values = [r.get('power', 0) for r in sorted_day_records if r.get('power') is not None]
+                        is_accumulative = False
+                        
+                        if len(values) >= 2:
+                            # 检查是否为累积型：如果值持续递增或保持稳定，且差值合理
+                            if all(values[i] <= values[i+1] for i in range(len(values)-1)) or \
+                               (max(values) - min(values) < max(values) * 0.1):  # 变化小于10%
+                                is_accumulative = True
+                        
+                        if is_accumulative:
+                            # 累积电量：一天的用电量 = 结束时的累积电量 - 开始时的累积电量
+                            daily_consumption = last_value - first_value
+                            avg_power = sum(values) / len(values) if values else 0
+                            
+                            lines.append(f"\n日期: {date_key}")
+                            lines.append(f"  记录数: {len(day_records)}")
+                            lines.append(f"  起始时间: {first_time_str}, 起始累积电量: {first_value:.2f} kWh")
+                            lines.append(f"  结束时间: {last_time_str}, 结束累积电量: {last_value:.2f} kWh")
+                            lines.append(f"  当日用电量: {daily_consumption:.2f} kWh (千瓦时)")
+                            lines.append(f"  说明: 电表为累积型，用电量 = 结束值 - 起始值")
+                            
+                            # 显示每小时数据
+                            lines.append(f"  每小时累积电量记录:")
+                            for record in sorted_day_records[:24]:  # 最多显示24条
+                                power = record.get('power')
+                                time_str = record.get('update_time', '')
+                                if power is not None:
+                                    lines.append(f"    {time_str}: {power:.2f} kWh")
+                        else:
+                            # 瞬时功率：用电量 = 平均功率 × 时间
+                            total_power = sum(values)
+                            avg_power = total_power / len(values) if values else 0
+                            daily_consumption = avg_power * max(hours, len(sorted_day_records) - 1)
+                            
+                            lines.append(f"\n日期: {date_key}")
+                            lines.append(f"  记录数: {len(day_records)}")
+                            lines.append(f"  起始时间: {first_time_str}, 起始功率: {first_value:.2f} kW")
+                            lines.append(f"  结束时间: {last_time_str}, 结束功率: {last_value:.2f} kW")
+                            lines.append(f"  平均功率: {avg_power:.2f} kW")
+                            lines.append(f"  当日用电量: {daily_consumption:.2f} kWh (千瓦时)")
+                            lines.append(f"  说明: 电表为瞬时功率型，用电量 = 平均功率 × 时间")
+                            
+                            # 显示每小时数据
+                            lines.append(f"  每小时功率记录:")
+                            for record in sorted_day_records[:24]:  # 最多显示24条
+                                power = record.get('power')
+                                time_str = record.get('update_time', '')
+                                if power is not None:
+                                    lines.append(f"    {time_str}: {power:.2f} kW")
+                    except Exception as e:
+                        lines.append(f"\n日期: {date_key}")
+                        lines.append(f"  记录数: {len(day_records)}")
+                        lines.append(f"  错误: 无法计算用电量 - {str(e)}")
+        else:
+            lines.append("暂无按日期分组的数据")
+        
         lines.append("")
+    
+    # 添加查询说明和设备映射
+    lines.append("=" * 60)
+    lines.append("【设备编号与房间对应关系】")
+    lines.append("XZD20250731 = 07室 = 07室电表")
+    lines.append("XZD20250732 = 08室 = 08室电表")
+    lines.append("XZD20250734 = 01室 = 01室电表")
+    lines.append("")
+    lines.append("【查询说明】")
+    lines.append("1. 可以用房间名称查询：'01室今天的用电量'、'07室在2025-10-31的用电量'、'08室昨天的用电量'")
+    lines.append("2. 可以用设备名称查询：'01室电表今天的用电量'、'07室电表在2025-10-31的用电量'")
+    lines.append("3. 可以用设备编号查询：'XZD20250734在2025-10-31的用电量'")
+    lines.append("4. 可以查询：'所有设备昨天的用电量'、'所有电表今天的用电情况'")
+    lines.append("5. 用电量单位：kWh（千瓦时），1 kWh = 1度电")
+    lines.append("6. 功率单位：kW（千瓦）")
+    lines.append("")
+    lines.append("【查询示例】")
+    lines.append("- '01室今天的用电量是多少？'")
+    lines.append("- '07室在2025年10月31日的用电量'")
+    lines.append("- '08室电表昨天的用电量'")
+    lines.append("- 'XZD20250734在2025-10-31用了多少度电？'")
+    lines.append("=" * 60)
     
     return "\n".join(lines)
 
