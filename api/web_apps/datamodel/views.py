@@ -8,6 +8,7 @@ from utils.web_utils import get_req_para, validate_params, generate_download_fil
 from utils.common_utils import gen_json_response
 from web_apps.datamodel.services.datamodel_api_services import DataModelApiService
 from web_apps.datamodel.services.datamodel_query_api_service import DataModelQueryApiService
+from web_apps.datamodel.services.prediction_service import DevicePredictionService
 from utils.etl_utils import get_writer_model
 from bson import ObjectId
 from datetime import datetime
@@ -473,6 +474,80 @@ def get_daily_power_trend():
         return jsonify(gen_json_response(data=result))
     except Exception as e:
         return jsonify(gen_json_response(code=500, msg=f"获取日用电量趋势失败：{e}"))
+
+
+@datamodel_bp.route('/dashboard/device-prediction', methods=['POST'])
+def predict_device_metrics():
+    '''
+    设备指标LSTM预测接口
+    请求参数:
+        deviceName: 设备名称
+        metric: 指标名称（可选，默认'power'）
+        start: 开始时间戳（毫秒）
+        end: 结束时间戳（毫秒）
+        predictionSteps: 预测未来多少个点（可选，默认36，约3小时）
+        timeSteps: LSTM时间窗口大小（可选，默认30）
+    '''
+    try:
+        req = get_req_para(request)
+        device_name = req.get('deviceName') or req.get('device_name')
+        metric = req.get('metric', 'power')
+        start_ts = int(req.get('start', 0))
+        end_ts = int(req.get('end', 0))
+        prediction_steps = int(req.get('predictionSteps', 36))
+        time_steps = int(req.get('timeSteps', 30))
+        
+        if not device_name or not start_ts or not end_ts:
+            return jsonify(gen_json_response(code=400, msg='参数缺失：需要deviceName、start、end'))
+        
+        # 获取历史数据
+        datamodel_service = DataModelApiService()
+        metrics_data = datamodel_service.get_device_metrics(device_name, start_ts, end_ts)
+        
+        if not metrics_data or 'series' not in metrics_data:
+            return jsonify(gen_json_response(code=404, msg='未找到设备数据'))
+        
+        series = metrics_data.get('series', {})
+        
+        # 如果指定了metric，只预测该metric；否则预测所有可用的metric
+        metrics_to_predict = [metric] if metric in series else list(series.keys())
+        
+        if not metrics_to_predict:
+            return jsonify(gen_json_response(code=404, msg=f'未找到指标数据: {metric}'))
+        
+        # 调用预测服务
+        prediction_service = DevicePredictionService()
+        results = {}
+        
+        for m in metrics_to_predict:
+            data_points = series.get(m, [])
+            if not data_points or len(data_points) < 10:
+                continue
+            
+            prediction_result = prediction_service.predict_device_metric(
+                data_points=data_points,
+                metric_name=m,
+                prediction_steps=prediction_steps,
+                time_steps=time_steps,
+                epochs=30  # 可以调整训练轮数
+            )
+            
+            if prediction_result.get('success'):
+                results[m] = prediction_result
+        
+        if results:
+            return jsonify(gen_json_response(data={
+                'deviceName': device_name,
+                'predictions': results,
+                'predictionSteps': prediction_steps
+            }))
+        else:
+            return jsonify(gen_json_response(code=500, msg='预测失败：数据不足或模型训练失败'))
+            
+    except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
+        return jsonify(gen_json_response(code=500, msg=f"预测失败：{str(e)}"))
 
 
 # 物联网设备上报接口：实时写入 MongoDB

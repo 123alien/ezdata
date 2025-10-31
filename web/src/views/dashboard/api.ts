@@ -11,6 +11,7 @@ enum Api {
   powerMeterStats = '/datamodel/dashboard/power-meter-stats',
   deviceMetrics = '/datamodel/dashboard/device-metrics',
   dailyPowerTrend = '/datamodel/dashboard/daily-power-trend',
+  devicePrediction = '/datamodel/dashboard/device-prediction',
 }
 
 /**
@@ -62,3 +63,8 @@ export const getDeviceMetrics = (params?) => defHttp.get({ url: Api.deviceMetric
  * 获取日用电量趋势数据
  */
 export const getDailyPowerTrend = (params?) => defHttp.get({ url: Api.dailyPowerTrend, params });
+
+/**
+ * 设备指标LSTM预测
+ */
+export const predictDeviceMetrics = (params?) => defHttp.post({ url: Api.devicePrediction, params });
