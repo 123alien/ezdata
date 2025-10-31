@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-电表数据同步到知识库
-每天将电表数据同步到"电表"知识库（更新同一文档）
+门禁数据同步到知识库
+每天将门禁数据同步到"门禁"知识库（更新同一文档）
 """
 import sys
 import os
@@ -20,34 +20,33 @@ os.chdir(api_dir)  # 切换到api目录
 from web_apps import app, db
 from web_apps.rag.db_models import Document
 from web_apps.rag.kb_models import KnowledgeBaseBinding
+from web_apps.rag.db_models import Dataset
 from utils.common_utils import gen_uuid
 from pymongo import MongoClient
 
 # MongoDB配置
-MONGO_HOST = os.getenv("MONGO_HOST", "localhost")
-MONGO_PORT = int(os.getenv("MONGO_PORT", "27017"))
-MONGO_USERNAME = os.getenv("MONGO_USERNAME", "admin")
-MONGO_PASSWORD = os.getenv("MONGO_PASSWORD", "admin123")
-MONGO_DB = os.getenv("MONGO_DB", "ezdata")
-MONGO_AUTH_SOURCE = os.getenv("MONGO_AUTH_SOURCE", "admin")
+MONGO_HOST = os.getenv("DOOR_MONGO_HOST", os.getenv("MONGO_HOST", "localhost"))
+MONGO_PORT = int(os.getenv("DOOR_MONGO_PORT", os.getenv("MONGO_PORT", "27017")))
+MONGO_USERNAME = os.getenv("DOOR_MONGO_USERNAME", os.getenv("MONGO_USERNAME", "admin"))
+MONGO_PASSWORD = os.getenv("DOOR_MONGO_PASSWORD", os.getenv("MONGO_PASSWORD", "admin123"))
+MONGO_DB = os.getenv("DOOR_MONGO_DB", os.getenv("MONGO_DB", "ezdata"))
+MONGO_AUTH_SOURCE = os.getenv("DOOR_MONGO_AUTH_SOURCE", os.getenv("MONGO_AUTH_SOURCE", "admin"))
 
 # 集合名称
-SNAPSHOT_COLL = "power_meter_daily_snapshot"
-FACTOR_COLL = "power_meter_daily_factor_snapshot"
+DOOR_LOG_COLL = os.getenv("DOOR_LOG_COLL", "door_access_logs")
 
 # 同步配置
-SYNC_INTERVAL = int(os.getenv("POWER_METER_SYNC_INTERVAL", "86400"))  # 默认24小时（1天）同步一次
-DATA_LIMIT = int(os.getenv("POWER_METER_SYNC_DATA_LIMIT", "0"))  # 0表示同步所有数据
-MAX_DOC_SIZE = int(os.getenv("POWER_METER_MAX_DOC_SIZE", "80000"))  # 单个文档最大字符数（约8万字符），超过后创建新文档
-SYNC_TIME = os.getenv("POWER_METER_SYNC_TIME", "02:00")  # 默认每天凌晨2点同步
+SYNC_TIME = os.getenv("DOOR_SYNC_TIME", "02:30")  # 默认每天凌晨2:30同步
+DATA_LIMIT = int(os.getenv("DOOR_SYNC_DATA_LIMIT", "0"))  # 0表示同步所有数据
+MAX_DOC_SIZE = int(os.getenv("DOOR_MAX_DOC_SIZE", "80000"))  # 单个文档最大字符数（约8万字符），超过后创建新文档
 
 # 日志配置
 from logging.handlers import RotatingFileHandler
 
-logger = logging.getLogger("power_meter_kb_sync")
+logger = logging.getLogger("door_access_kb_sync")
 logger.setLevel(logging.INFO)
 
-log_file = os.getenv("POWER_METER_SYNC_LOG_FILE", "power_meter_kb_sync.log")
+log_file = os.getenv("DOOR_SYNC_LOG_FILE", "door_access_kb_sync.log")
 file_handler = RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8")
 console_handler = logging.StreamHandler()
 fmt = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
@@ -64,54 +63,31 @@ def get_mongo_client() -> MongoClient:
     return MongoClient(**params)
 
 
-def fetch_recent_power_meter_data(since_time: datetime = None, limit: int = 0) -> List[Dict[str, Any]]:
-    """从MongoDB获取电表数据
+def fetch_door_access_data(limit: int = 0) -> List[Dict[str, Any]]:
+    """从MongoDB获取门禁数据
     limit=0 表示获取所有数据
     """
     client = get_mongo_client()
     try:
         db_mongo = client[MONGO_DB]
         
-        # 构建查询条件
-        query = {}
-        if since_time:
-            query["update_time"] = {"$gte": since_time}
-        
-        # 获取快照数据，按时间倒序
+        # 获取门禁记录，按时间倒序
         if limit > 0:
-            snapshots = list(db_mongo[SNAPSHOT_COLL].find(query).sort("update_time", -1).limit(limit))
+            logs = list(db_mongo[DOOR_LOG_COLL].find().sort("visit_time", -1).limit(limit))
         else:
             # 获取所有数据
-            snapshots = list(db_mongo[SNAPSHOT_COLL].find(query).sort("update_time", -1))
+            logs = list(db_mongo[DOOR_LOG_COLL].find().sort("visit_time", -1))
         
         data_list = []
-        for snapshot in snapshots:
-            device_num = snapshot.get("device_num")
-            device_name = snapshot.get("device_name", device_num)
-            update_time = snapshot.get("update_time")
-            
-            # 获取对应的因子数据（功率值）
-            factors = list(db_mongo[FACTOR_COLL].find({
-                "device_num": device_num,
-                "update_time": update_time
-            }))
-            
-            power_data = {}
-            for factor in factors:
-                factor_name = factor.get("factor_name")
-                factor_value = factor.get("factor_value")
-                if factor_name == "功率" or factor.get("factor_code") == "power":
-                    power_data["power"] = factor_value
-                    power_data["unit"] = factor.get("factor_unit", "kW")
-            
-            if power_data:
-                data_list.append({
-                    "device_num": device_num,
-                    "device_name": device_name,
-                    "update_time": update_time.strftime("%Y-%m-%d %H:%M:%S") if update_time else "",
-                    "power": power_data.get("power"),
-                    "unit": power_data.get("unit", "kW")
-                })
+        for log in logs:
+            data_list.append({
+                "member_xm": log.get("member_xm", ""),
+                "member_id": log.get("member_id", ""),
+                "door_name": log.get("door_name", ""),
+                "door_id": log.get("door_id", ""),
+                "visit_time": log.get("visit_time").strftime("%Y-%m-%d %H:%M:%S") if log.get("visit_time") else "",
+                "remark": log.get("remark", "")
+            })
         
         return data_list
     finally:
@@ -119,179 +95,177 @@ def fetch_recent_power_meter_data(since_time: datetime = None, limit: int = 0) -
 
 
 def format_data_as_text(data_list: List[Dict[str, Any]]) -> str:
-    """将电表数据格式化为文本，包含每天的用电量统计"""
+    """将门禁数据格式化为文本，包含统计信息"""
     if not data_list:
-        return "暂无电表数据"
+        return "暂无门禁数据"
     
-    lines = ["电表数据汇总报告", "=" * 60]
+    lines = ["门禁通行数据汇总报告", "=" * 60]
     lines.append(f"数据记录数: {len(data_list)}")
     lines.append(f"更新时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     lines.append("")
     
-    # 按设备分组
-    devices = {}
+    # 按日期分组
+    daily_data = {}
     for item in data_list:
-        device_num = item.get("device_num")
-        if device_num not in devices:
-            devices[device_num] = {
-                "name": item.get("device_name", device_num),
-                "records": []
-            }
-        devices[device_num]["records"].append(item)
+        time_str = item.get('visit_time', '')
+        if not time_str:
+            continue
+        try:
+            record_time = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+            date_key = record_time.strftime("%Y-%m-%d")
+            if date_key not in daily_data:
+                daily_data[date_key] = []
+            daily_data[date_key].append(item)
+        except:
+            continue
     
-    # 设备编号与房间对应关系
-    device_room_map = {
-        'XZD20250731': '07室',
-        'XZD20250732': '08室',
-        'XZD20250734': '01室',
-    }
+    # 按日期分组统计
+    lines.append("【每日通行统计】")
+    if daily_data:
+        for date_key in sorted(daily_data.keys(), reverse=True):
+            day_records = daily_data[date_key]
+            
+            # 统计信息
+            total_count = len(day_records)
+            unique_members = len(set(r.get('member_xm', '') for r in day_records if r.get('member_xm')))
+            unique_doors = len(set(r.get('door_name', '') for r in day_records if r.get('door_name')))
+            
+            # 按人员统计
+            member_count = {}
+            for r in day_records:
+                member = r.get('member_xm', '未知')
+                if member:
+                    member_count[member] = member_count.get(member, 0) + 1
+            
+            # 按门禁统计
+            door_count = {}
+            for r in day_records:
+                door = r.get('door_name', '未知')
+                if door:
+                    door_count[door] = door_count.get(door, 0) + 1
+            
+            lines.append(f"\n日期: {date_key}")
+            lines.append(f"  总通行次数: {total_count}")
+            lines.append(f"  通行人员数: {unique_members}")
+            lines.append(f"  使用门禁数: {unique_doors}")
+            lines.append("")
+            
+            # 人员通行排行（前10名）
+            if member_count:
+                lines.append(f"  人员通行排行（前10名）:")
+                sorted_members = sorted(member_count.items(), key=lambda x: x[1], reverse=True)[:10]
+                for member, count in sorted_members:
+                    lines.append(f"    {member}: {count}次")
+                lines.append("")
+            
+            # 门禁使用排行
+            if door_count:
+                lines.append(f"  门禁使用统计:")
+                sorted_doors = sorted(door_count.items(), key=lambda x: x[1], reverse=True)
+                for door, count in sorted_doors:
+                    lines.append(f"    {door}: {count}次")
+                lines.append("")
+            
+            # 显示最近的通行记录（前20条）
+            lines.append(f"  最近通行记录（前20条）:")
+            sorted_day_records = sorted(day_records, key=lambda x: x.get('visit_time', ''), reverse=True)
+            for record in sorted_day_records[:20]:
+                member = record.get('member_xm', '未知')
+                door = record.get('door_name', '未知')
+                time_str = record.get('visit_time', '')
+                remark = record.get('remark', '')
+                lines.append(f"    {time_str} - {member} 通过 {door}" + (f" ({remark})" if remark else ""))
+            lines.append("")
+    else:
+        lines.append("暂无按日期分组的数据")
     
-    # 格式化输出，按日期分组并计算每天用电量
-    for device_num, device_info in devices.items():
-        room_name = device_room_map.get(device_num, '未知')
-        device_name = device_info['name']
-        
-        lines.append(f"\n【设备信息】")
-        lines.append(f"设备编号: {device_num}")
-        lines.append(f"设备名称: {device_name}")
-        lines.append(f"房间名称: {room_name} (可用'{room_name}'或'{device_name}'或'{device_num}'查询)")
-        lines.append(f"总记录数: {len(device_info['records'])}")
-        lines.append("")
-        
-        # 按日期分组
-        daily_data = {}
-        sorted_records = sorted(device_info['records'], key=lambda x: x.get('update_time', ''))
-        
-        for record in sorted_records:
-            time_str = record.get('update_time', '')
-            if not time_str:
-                continue
-            try:
-                record_time = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
-                date_key = record_time.strftime("%Y-%m-%d")
-                if date_key not in daily_data:
-                    daily_data[date_key] = []
-                daily_data[date_key].append(record)
-            except:
-                continue
-        
-        # 计算每天的用电量
-        lines.append("【每日用电量统计】")
-        if daily_data:
-            for date_key in sorted(daily_data.keys(), reverse=True):
-                day_records = daily_data[date_key]
-                if len(day_records) < 2:
-                    # 如果只有一条记录，无法计算用电量
-                    lines.append(f"\n日期: {date_key}")
-                    lines.append(f"  记录数: {len(day_records)}")
-                    if day_records:
-                        power = day_records[0].get('power')
-                        if power is not None:
-                            lines.append(f"  瞬时功率: {power:.2f} kW")
-                    lines.append(f"  说明: 数据不足，无法计算当日用电量")
-                else:
-                    # 计算当天用电量
-                    sorted_day_records = sorted(day_records, key=lambda x: x.get('update_time', ''))
-                    first_record = sorted_day_records[0]
-                    last_record = sorted_day_records[-1]
-                    first_value = first_record.get('power', 0)
-                    last_value = last_record.get('power', 0)
-                    first_time_str = first_record.get('update_time', '')
-                    last_time_str = last_record.get('update_time', '')
-                    
-                    try:
-                        first_time = datetime.strptime(first_time_str, "%Y-%m-%d %H:%M:%S")
-                        last_time = datetime.strptime(last_time_str, "%Y-%m-%d %H:%M:%S")
-                        hours = (last_time - first_time).total_seconds() / 3600
-                        
-                        # 判断数据类型：如果数值持续递增或保持稳定，可能是累积电量（度数）
-                        # 如果数值波动较大，可能是瞬时功率
-                        values = [r.get('power', 0) for r in sorted_day_records if r.get('power') is not None]
-                        is_accumulative = False
-                        
-                        if len(values) >= 2:
-                            # 检查是否为累积型：如果值持续递增或保持稳定，且差值合理
-                            if all(values[i] <= values[i+1] for i in range(len(values)-1)) or \
-                               (max(values) - min(values) < max(values) * 0.1):  # 变化小于10%
-                                is_accumulative = True
-                        
-                        if is_accumulative:
-                            # 累积电量：一天的用电量 = 结束时的累积电量 - 开始时的累积电量
-                            daily_consumption = last_value - first_value
-                            avg_power = sum(values) / len(values) if values else 0
-                            
-                            lines.append(f"\n日期: {date_key}")
-                            lines.append(f"  记录数: {len(day_records)}")
-                            lines.append(f"  起始时间: {first_time_str}, 起始累积电量: {first_value:.2f} kWh")
-                            lines.append(f"  结束时间: {last_time_str}, 结束累积电量: {last_value:.2f} kWh")
-                            lines.append(f"  当日用电量: {daily_consumption:.2f} kWh (千瓦时)")
-                            lines.append(f"  说明: 电表为累积型，用电量 = 结束值 - 起始值")
-                            
-                            # 显示每小时数据
-                            lines.append(f"  每小时累积电量记录:")
-                            for record in sorted_day_records[:24]:  # 最多显示24条
-                                power = record.get('power')
-                                time_str = record.get('update_time', '')
-                                if power is not None:
-                                    lines.append(f"    {time_str}: {power:.2f} kWh")
-                        else:
-                            # 瞬时功率：用电量 = 平均功率 × 时间
-                            total_power = sum(values)
-                            avg_power = total_power / len(values) if values else 0
-                            daily_consumption = avg_power * max(hours, len(sorted_day_records) - 1)
-                            
-                            lines.append(f"\n日期: {date_key}")
-                            lines.append(f"  记录数: {len(day_records)}")
-                            lines.append(f"  起始时间: {first_time_str}, 起始功率: {first_value:.2f} kW")
-                            lines.append(f"  结束时间: {last_time_str}, 结束功率: {last_value:.2f} kW")
-                            lines.append(f"  平均功率: {avg_power:.2f} kW")
-                            lines.append(f"  当日用电量: {daily_consumption:.2f} kWh (千瓦时)")
-                            lines.append(f"  说明: 电表为瞬时功率型，用电量 = 平均功率 × 时间")
-                            
-                            # 显示每小时数据
-                            lines.append(f"  每小时功率记录:")
-                            for record in sorted_day_records[:24]:  # 最多显示24条
-                                power = record.get('power')
-                                time_str = record.get('update_time', '')
-                                if power is not None:
-                                    lines.append(f"    {time_str}: {power:.2f} kW")
-                    except Exception as e:
-                        lines.append(f"\n日期: {date_key}")
-                        lines.append(f"  记录数: {len(day_records)}")
-                        lines.append(f"  错误: 无法计算用电量 - {str(e)}")
-        else:
-            lines.append("暂无按日期分组的数据")
-        
-        lines.append("")
-    
-    # 添加查询说明和设备映射
+    # 添加查询说明
     lines.append("=" * 60)
-    lines.append("【设备编号与房间对应关系】")
-    lines.append("XZD20250731 = 07室 = 07室电表")
-    lines.append("XZD20250732 = 08室 = 08室电表")
-    lines.append("XZD20250734 = 01室 = 01室电表")
-    lines.append("")
     lines.append("【查询说明】")
-    lines.append("1. 可以用房间名称查询：'01室今天的用电量'、'07室在2025-10-31的用电量'、'08室昨天的用电量'")
-    lines.append("2. 可以用设备名称查询：'01室电表今天的用电量'、'07室电表在2025-10-31的用电量'")
-    lines.append("3. 可以用设备编号查询：'XZD20250734在2025-10-31的用电量'")
-    lines.append("4. 可以查询：'所有设备昨天的用电量'、'所有电表今天的用电情况'")
-    lines.append("5. 用电量单位：kWh（千瓦时），1 kWh = 1度电")
-    lines.append("6. 功率单位：kW（千瓦）")
+    lines.append("1. 可以查询：'某人在某一天的通行记录'，例如：'张三在2025-10-31的通行记录'")
+    lines.append("2. 可以查询：'某人在某天的通行次数'，例如：'李四在2025-10-31通行了几次'")
+    lines.append("3. 可以查询：'某门禁在某天的使用情况'，例如：'主入口在2025-10-31的通行记录'")
+    lines.append("4. 可以查询：'某天总共有多少人通行'，例如：'2025-10-31有多少人通行'")
+    lines.append("5. 可以查询：'某天哪个门禁使用最多'，例如：'2025-10-31哪个门禁使用最频繁'")
     lines.append("")
     lines.append("【查询示例】")
-    lines.append("- '01室今天的用电量是多少？'")
-    lines.append("- '07室在2025年10月31日的用电量'")
-    lines.append("- '08室电表昨天的用电量'")
-    lines.append("- 'XZD20250734在2025-10-31用了多少度电？'")
+    lines.append("- '张三在2025年10月31日的通行记录'")
+    lines.append("- '李四今天通行了几次？'")
+    lines.append("- '主入口在2025-10-31的通行情况'")
+    lines.append("- '昨天有多少人通行？'")
+    lines.append("- '哪个门禁使用最频繁？'")
     lines.append("=" * 60)
     
     return "\n".join(lines)
 
 
+def ensure_kb_binding():
+    """确保门禁知识库和namespace绑定存在（使用已存在的绑定）"""
+    with app.app_context():
+        try:
+            namespace = "men"
+            
+            # 首先查找已存在的绑定
+            existing_binding = db.session.query(KnowledgeBaseBinding).filter(
+                KnowledgeBaseBinding.namespace == namespace,
+                KnowledgeBaseBinding.del_flag == 0
+            ).first()
+            
+            if existing_binding:
+                dataset_id = existing_binding.kb_id
+                dataset = db.session.query(Dataset).filter(Dataset.id == dataset_id).first()
+                logger.info(f"找到已存在的绑定: namespace '{namespace}' -> 知识库 '{dataset.name if dataset else dataset_id}' (ID: {dataset_id})")
+                return dataset_id
+            
+            # 如果不存在，查找或创建知识库
+            kb_name = "门禁数据"
+            existing_kb = db.session.query(Dataset).filter(
+                Dataset.name == kb_name,
+                Dataset.del_flag == 0
+            ).first()
+            
+            if existing_kb:
+                dataset_id = existing_kb.id
+                logger.info(f"找到已存在的知识库: {kb_name} (ID: {dataset_id})")
+            else:
+                dataset = Dataset(
+                    id=gen_uuid(res_type='base'),
+                    name=kb_name,
+                    built_in=0,
+                    status=1,
+                    create_by='admin',
+                    create_time=datetime.now()
+                )
+                db.session.add(dataset)
+                db.session.commit()
+                dataset_id = dataset.id
+                logger.info(f"创建知识库成功: {kb_name} (ID: {dataset_id})")
+            
+            # 创建绑定
+            binding = KnowledgeBaseBinding(
+                kb_id=dataset_id,
+                namespace=namespace,
+                remark="门禁数据知识库",
+                create_by='admin',
+                create_time=datetime.now()
+            )
+            db.session.add(binding)
+            db.session.commit()
+            logger.info(f"绑定创建成功: 绑定到 namespace {namespace}")
+            return dataset_id
+                
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"确保知识库绑定失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+
 def split_data_by_date_and_size(data_list: List[Dict[str, Any]], max_size: int) -> List[tuple]:
     """按日期范围和文档大小分割数据
     返回: [(日期范围字符串, [数据列表]), ...]
+    例如: [("2025-10-01至2025-10-15", [数据]), ("2025-10-16至2025-10-31", [数据])]
     """
     if not data_list:
         return []
@@ -299,7 +273,7 @@ def split_data_by_date_and_size(data_list: List[Dict[str, Any]], max_size: int) 
     # 按日期分组
     daily_groups = {}
     for item in data_list:
-        time_str = item.get('update_time', '')
+        time_str = item.get('visit_time', '')
         if not time_str:
             continue
         try:
@@ -355,23 +329,17 @@ def split_data_by_date_and_size(data_list: List[Dict[str, Any]], max_size: int) 
 
 
 def sync_to_kb(data_list: List[Dict[str, Any]]) -> bool:
-    """将电表数据同步到知识库（按日期范围自动分文档）"""
+    """将门禁数据同步到知识库（自动分文档）"""
     with app.app_context():
         try:
-            # 1. 找到"电表"知识库
-            binding = db.session.query(KnowledgeBaseBinding).filter(
-                KnowledgeBaseBinding.namespace == "dian",
-                KnowledgeBaseBinding.del_flag == 0
-            ).first()
-            
-            if not binding:
-                logger.warning("未找到namespace 'dian'的绑定")
+            # 1. 确保知识库和绑定存在
+            dataset_id = ensure_kb_binding()
+            if not dataset_id:
+                logger.warning("无法获取知识库ID")
                 return False
             
-            dataset_id = binding.kb_id
-            
             # 2. 获取所有历史数据
-            all_data = fetch_recent_power_meter_data(limit=DATA_LIMIT)
+            all_data = fetch_door_access_data(limit=DATA_LIMIT)
             if not all_data:
                 logger.warning("未找到数据")
                 return False
@@ -390,7 +358,7 @@ def sync_to_kb(data_list: List[Dict[str, Any]]) -> bool:
                 actual_size = len(content)
                 
                 # 文档名称：包含日期范围，便于RAG检索
-                doc_name = f"电表数据-{date_range}"
+                doc_name = f"门禁通行数据-{date_range}"
                 
                 # 查找或创建文档
                 existing_doc = db.session.query(Document).filter(
@@ -407,7 +375,7 @@ def sync_to_kb(data_list: List[Dict[str, Any]]) -> bool:
                     logger.info(f"创建文档 {idx+1}/{len(date_chunks)}: {doc_name} (大小: {actual_size} 字符)")
                 
                 # 创建临时文本文件
-                temp_file_path = f"/tmp/power_meter_data_{doc_id}.txt"
+                temp_file_path = f"/tmp/door_access_data_{doc_id}.txt"
                 with open(temp_file_path, 'w', encoding='utf-8') as f:
                     f.write(content)
                 
@@ -416,10 +384,10 @@ def sync_to_kb(data_list: List[Dict[str, Any]]) -> bool:
                     meta_data = json.loads(existing_doc.meta_data) if existing_doc.meta_data else {}
                     meta_data.update({
                         "upload_file": temp_file_path,
-                        "source": "power_meter_mongodb_realtime",
+                        "source": "door_access_mongodb_realtime",
                         "data_count": len(chunk),
                         "document_size": actual_size,
-                        "date_range": date_range,
+                        "chunk_index": idx,
                         "last_updated": datetime.now().isoformat(),
                         "update_count": meta_data.get("update_count", 0) + 1
                     })
@@ -438,10 +406,10 @@ def sync_to_kb(data_list: List[Dict[str, Any]]) -> bool:
                         status=1,
                         meta_data=json.dumps({
                             "upload_file": temp_file_path,
-                            "source": "power_meter_mongodb_realtime",
+                            "source": "door_access_mongodb_realtime",
                             "data_count": len(chunk),
                             "document_size": actual_size,
-                            "date_range": date_range,
+                            "chunk_index": idx,
                             "created_at": datetime.now().isoformat(),
                             "update_count": 1
                         }, ensure_ascii=False),
@@ -459,7 +427,6 @@ def sync_to_kb(data_list: List[Dict[str, Any]]) -> bool:
                     
                     namespace = _resolve_namespace_by_dataset(dataset_id)
                     if namespace:
-                        # 读取文件内容
                         raw_text = None
                         if os.path.exists(temp_file_path):
                             try:
@@ -468,12 +435,10 @@ def sync_to_kb(data_list: List[Dict[str, Any]]) -> bool:
                             except Exception:
                                 pass
                         
-                        # 生成token
                         user_id = ""
                         tenant_id = 1
                         token = _generate_sso_token(user_id, tenant_id, dataset_id, namespace)
                         
-                        # 调用TrustRAG API
                         base_url = app.config.get("TRUSTRAG_BASE_URL", "http://127.0.0.1:8217")
                         headers = {
                             "Authorization": f"Bearer {token}",
@@ -526,7 +491,7 @@ def sync_loop():
     
     # 注册每天定时同步任务
     schedule.every().day.at(SYNC_TIME).do(sync_once)
-    logger.info(f"已注册定时任务：每天 {SYNC_TIME} 同步电表数据到知识库")
+    logger.info(f"已注册定时任务：每天 {SYNC_TIME} 同步门禁数据到知识库")
     
     # 主循环
     while True:
@@ -541,7 +506,7 @@ def sync_once():
         logger.info(f"开始同步 - 时间: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
         
         # 获取所有历史数据（limit=0表示获取所有）
-        data_list = fetch_recent_power_meter_data(limit=DATA_LIMIT)
+        data_list = fetch_door_access_data(limit=DATA_LIMIT)
         
         if data_list:
             logger.info(f"找到 {len(data_list)} 条数据，开始同步到知识库...")
@@ -560,7 +525,7 @@ def sync_once():
 def main():
     """主函数"""
     logger.info("=" * 60)
-    logger.info("电表数据同步服务启动")
+    logger.info("门禁数据同步服务启动")
     logger.info(f"同步时间: 每天 {SYNC_TIME}（北京时间）")
     if DATA_LIMIT > 0:
         logger.info(f"每次同步数据量: 最多 {DATA_LIMIT} 条")
@@ -568,7 +533,7 @@ def main():
         logger.info(f"每次同步数据量: 所有历史数据")
     logger.info(f"单个文档最大大小: {MAX_DOC_SIZE} 字符（超过后自动创建新文档）")
     logger.info(f"目标数据库: {MONGO_DB}")
-    logger.info(f"目标知识库: namespace 'dian'")
+    logger.info(f"目标知识库: namespace 'men'")
     logger.info("=" * 60)
     
     # 检查是否需要立即执行一次同步
