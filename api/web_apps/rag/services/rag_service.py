@@ -455,6 +455,21 @@ def train_document(document_id, metadata=None):
             db.session.add(document_obj)
             db.session.flush()
             db.session.commit()
+            
+            # 训练完成后自动同步到 TrustRAG
+            try:
+                from utils.common_utils import parse_json
+                from web_apps.rag.services.trustrag_sync_service import sync_created_document
+                meta_data_dict = parse_json(document_obj.meta_data)
+                sync_result = sync_created_document(dataset_id=document_obj.dataset_id, meta_data=meta_data_dict)
+                if sync_result.get('success'):
+                    print(f"[TrustRAG Sync] 文档训练完成后自动同步成功: {document_obj.name}")
+                else:
+                    print(f"[TrustRAG Sync] 文档训练完成后自动同步失败: {sync_result.get('message', 'unknown error')}")
+            except Exception as se:
+                # 同步失败不影响训练成功，仅记录日志
+                print(f"[TrustRAG Sync] 文档训练完成后自动同步失败: {se}")
+            
         except Exception as e:
             import traceback
             error_msg = f"训练文档失败: {str(e)}\n{traceback.format_exc()}"

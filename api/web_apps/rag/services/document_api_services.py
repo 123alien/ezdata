@@ -2,6 +2,7 @@
 文档管理api服务
 '''
 import json
+from flask import current_app
 from web_apps import db
 from utils.query_utils import get_base_query
 from utils.auth import set_insert_user, set_update_user, get_auth_token_info
@@ -261,21 +262,27 @@ class DocumentApiService(object):
         db.session.add(obj)
         db.session.commit()
         db.session.flush()
-        # 训练文档
+        
+        # 立即同步到 TrustRAG（不等待训练完成）
+        try:
+            from utils.common_utils import parse_json
+            from web_apps.rag.services.trustrag_sync_service import sync_created_document
+            meta = parse_json(obj.meta_data)
+            sync_result = sync_created_document(dataset_id=obj.dataset_id, meta_data=meta)
+            if sync_result.get('success'):
+                current_app.logger.info(f"[TrustRAG Sync] 文档创建后立即同步成功: {obj.name}")
+            else:
+                current_app.logger.warning(f"[TrustRAG Sync] 文档创建后立即同步失败: {sync_result.get('message', 'unknown error')}")
+        except Exception as se:
+            # 同步失败不影响主流程，仅记录日志
+            current_app.logger.warning(f"[TrustRAG Sync] 文档创建后立即同步失败: {se}")
+        
+        # 训练文档（训练完成后也会再次同步，作为备用）
         user_info = get_auth_token_info()
         # 直接调用训练函数，绕过Celery避免EntryPoints问题
         from web_apps.rag.services.rag_service import train_document
         try:
             train_document(obj.id, metadata={'user_name': user_info['username']})
-            # 实时同步到 TrustRAG（我的知识库优先：dataset_id 即 KB id）
-            try:
-                from utils.common_utils import parse_json
-                from web_apps.rag.services.trustrag_sync_service import sync_created_document
-                meta = parse_json(obj.meta_data)
-                _ = sync_created_document(dataset_id=obj.dataset_id, meta_data=meta)
-            except Exception as se:
-                # 同步失败不影响主流程，仅记录日志
-                print(f"[TrustRAG Sync] skip or failed: {se}")
             return gen_json_response(msg='添加成功', extends={'success': True})
         except Exception as e:
             return gen_json_response(code=500, msg=f'添加成功但训练任务启动失败: {str(e)}', extends={'success': True})
@@ -303,14 +310,19 @@ class DocumentApiService(object):
         db.session.add(obj)
         db.session.commit()
         db.session.flush()
-        # 同步到 TrustRAG（重入库）
+        
+        # 立即同步到 TrustRAG（重入库）
         try:
             from utils.common_utils import parse_json
             from web_apps.rag.services.trustrag_sync_service import sync_edited_document
             meta = parse_json(obj.meta_data)
-            _ = sync_edited_document(dataset_id=obj.dataset_id, meta_data=meta)
+            sync_result = sync_edited_document(dataset_id=obj.dataset_id, meta_data=meta)
+            if sync_result.get('success'):
+                current_app.logger.info(f"[TrustRAG Sync] 文档编辑后立即同步成功: {obj.name}")
+            else:
+                current_app.logger.warning(f"[TrustRAG Sync] 文档编辑后立即同步失败: {sync_result.get('message', 'unknown error')}")
         except Exception as se:
-            print(f"[TrustRAG Sync Edit] skip or failed: {se}")
+            current_app.logger.warning(f"[TrustRAG Sync Edit] skip or failed: {se}")
         return gen_json_response(msg='编辑成功', extends={'success': True})
     
     @staticmethod

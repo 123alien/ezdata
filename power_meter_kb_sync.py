@@ -142,7 +142,8 @@ def format_data_as_text(data_list: List[Dict[str, Any]]) -> str:
     # 格式化输出，按日期分组并计算每天用电量
     for device_num, device_info in devices.items():
         room_name = device_room_map.get(device_num, '未知')
-        device_name = device_info['name']
+        # 强制使用正确的设备名称：房间名称 + "电表"，而不是MongoDB中可能错误的device_name
+        device_name = f"{room_name}电表"
         
         lines.append(f"\n【设备信息】")
         lines.append(f"设备编号: {device_num}")
@@ -213,7 +214,9 @@ def format_data_as_text(data_list: List[Dict[str, Any]]) -> str:
                             daily_consumption = last_value - first_value
                             avg_power = sum(values) / len(values) if values else 0
                             
-                            lines.append(f"\n日期: {date_key}")
+                            # 添加日期标记，便于过滤逻辑识别
+                            lines.append(f"\n【{date_key} 日期数据】")
+                            lines.append(f"日期: {date_key}")
                             lines.append(f"  记录数: {len(day_records)}")
                             lines.append(f"  起始时间: {first_time_str}, 起始累积电量: {first_value:.2f} kWh")
                             lines.append(f"  结束时间: {last_time_str}, 结束累积电量: {last_value:.2f} kWh")
@@ -233,7 +236,9 @@ def format_data_as_text(data_list: List[Dict[str, Any]]) -> str:
                             avg_power = total_power / len(values) if values else 0
                             daily_consumption = avg_power * max(hours, len(sorted_day_records) - 1)
                             
-                            lines.append(f"\n日期: {date_key}")
+                            # 添加日期标记，便于过滤逻辑识别
+                            lines.append(f"\n【{date_key} 日期数据】")
+                            lines.append(f"日期: {date_key}")
                             lines.append(f"  记录数: {len(day_records)}")
                             lines.append(f"  起始时间: {first_time_str}, 起始功率: {first_value:.2f} kW")
                             lines.append(f"  结束时间: {last_time_str}, 结束功率: {last_value:.2f} kW")
@@ -298,8 +303,28 @@ def sync_to_kb(data_list: List[Dict[str, Any]]) -> bool:
             
             dataset_id = binding.kb_id
             
-            # 2. 查找或创建固定的电表数据文档
-            doc_name = "电表数据实时汇总"
+            # 2. 按日期范围创建文档（便于检索）
+            # 获取数据日期范围
+            if data_list:
+                dates = set()
+                for item in data_list:
+                    time_str = item.get('update_time', '')
+                    if time_str:
+                        try:
+                            record_time = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+                            dates.add(record_time.strftime("%Y-%m-%d"))
+                        except:
+                            pass
+                if dates:
+                    sorted_dates = sorted(dates)
+                    date_range = f"{sorted_dates[0]}至{sorted_dates[-1]}"
+                    doc_name = f"电表数据-{date_range}"
+                else:
+                    doc_name = f"电表数据-{datetime.now().strftime('%Y-%m-%d')}"
+            else:
+                doc_name = f"电表数据-{datetime.now().strftime('%Y-%m-%d')}"
+            
+            # 查找是否已有同名文档（按日期范围）
             existing_doc = db.session.query(Document).filter(
                 Document.dataset_id == dataset_id,
                 Document.name == doc_name,
@@ -311,9 +336,8 @@ def sync_to_kb(data_list: List[Dict[str, Any]]) -> bool:
                 doc_id = existing_doc.id
                 logger.info(f"找到现有文档: {doc_name} (ID: {doc_id})，将更新内容")
                 
-                # 获取所有历史数据（包括新数据）
-                all_data = fetch_recent_power_meter_data(limit=DATA_LIMIT * 2)
-                content = format_data_as_text(all_data)
+                # 格式化数据为文本
+                content = format_data_as_text(data_list)
                 
                 # 更新临时文本文件
                 temp_file_path = f"/tmp/power_meter_data_{doc_id}.txt"
@@ -325,7 +349,7 @@ def sync_to_kb(data_list: List[Dict[str, Any]]) -> bool:
                 meta_data.update({
                     "upload_file": temp_file_path,
                     "source": "power_meter_mongodb_realtime",
-                    "data_count": len(all_data),
+                    "data_count": len(data_list),
                     "last_updated": datetime.now().isoformat(),
                     "update_count": meta_data.get("update_count", 0) + 1
                 })
@@ -334,7 +358,7 @@ def sync_to_kb(data_list: List[Dict[str, Any]]) -> bool:
                 existing_doc.status = 1  # 重新标记为待训练
                 db.session.commit()
                 db.session.flush()
-                logger.info(f"更新文档成功: {doc_name}，数据量: {len(all_data)}")
+                logger.info(f"更新文档成功: {doc_name}，数据量: {len(data_list)}")
             else:
                 # 创建新文档
                 logger.info(f"未找到现有文档，创建新文档: {doc_name}")
