@@ -887,6 +887,7 @@ class DataModelApiService(object):
             # 统一时区：默认 UTC+8，可通过环境变量覆盖（分钟偏移）
             import os
             from datetime import timezone, timedelta, datetime as _dt
+            import pymongo
             tz_offset_minutes_env = os.getenv('EZDATA_TZ_OFFSET_MINUTES')
             try:
                 tz_offset_minutes = int(tz_offset_minutes_env) if tz_offset_minutes_env is not None else 480
@@ -907,160 +908,90 @@ class DataModelApiService(object):
                 '01室电表': 'XZD20250734',
             }
             device_num = name_to_id.get(device_name, '')
+            if not device_num:
+                raise Exception(f"未知的设备名称: {device_name}")
 
-            # 从“设备数据”模型分页读取一定量数据后在内存中过滤
-            from web_apps.datamodel.services.datamodel_query_api_service import DataModelQueryApiService
-            query_service = DataModelQueryApiService()
+            # 将时间戳转换为 datetime（按配置的本地时区解释）
+            def to_local_dt(ts_ms: int):
+                dt_utc = _dt.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
+                return dt_utc.astimezone(timezone(tz_offset))
 
-            # 找出包含“设备”的已启用模型
-            iot_models = db.session.query(DataModel).filter(
-                DataModel.del_flag == 0,
-                DataModel.status == 1,
-                DataModel.name.like('%设备%')
-            ).all()
+            start_dt = to_local_dt(start_ts).replace(tzinfo=None)
+            end_dt = to_local_dt(end_ts).replace(tzinfo=None)
 
-            # 时间转换函数
-            def to_ms(v):
-                # 统一把多种 update_time 表达转成毫秒（字符串按本地时区 UTC+offset 解释）
-                try:
-                    # Mongo 扩展JSON：{"$date": 1754724322000}
-                    if isinstance(v, dict) and '$date' in v:
-                        return int(v['$date'])
-                    # 字符串：2025-09-17T15:08:08Z 或 2025-09-17 15:08:08
-                    if isinstance(v, str):
-                        if v.endswith('Z'):
-                            # UTC 时间，直接解析
-                            from datetime import datetime
-                            dt = datetime.fromisoformat(v.replace('Z', '+00:00'))
-                            return int(dt.timestamp() * 1000)
-                        else:
-                            # 本地时间，按配置的时区偏移解释
-                            from datetime import datetime
-                            dt = datetime.fromisoformat(v)
-                            # 应用时区偏移
-                            dt = dt.replace(tzinfo=timezone(tz_offset))
-                            return int(dt.timestamp() * 1000)
-                    # 数字：直接返回
-                    if isinstance(v, (int, float)):
-                        return int(v)
-                except Exception as e:
-                    print(f"时间解析失败: {v}, 错误: {e}")
-                    return None
-                return None
+            # 直接从 MongoDB 读取时序数据（避免 DataModel 读取过程中复用已关闭的连接）
+            client = None
+            try:
+                client = pymongo.MongoClient('mongodb://admin:admin123@localhost:27017/ezdata?authSource=admin')
+                db_mongo = client['ezdata']
+                collection = db_mongo['env_device_factor_snapshot']
 
-            records = []
-            for model in iot_models:
-                page = 1
-                pagesize = 1000  # 单页最多1000
-                max_records = 20000  # 最多抓取2万条/模型
-                fetched = 0
-                # 按更新时间倒序分页，直到覆盖到起始时间或无更多数据
-                while True:
-                    result = query_service.query_obj_data({
-                        'id': model.id,
-                        'page': page,
-                        'pagesize': pagesize,
-                        'column': 'update_time',  # 按更新时间排序
-                        'order': 'desc'  # 倒序，最新数据在前
-                    }, use_auth=False)
-                    if result.get('code') != 200:
-                        break
-                    data = result.get('data', {})
-                    recs = data.get('records', [])
-                    if not recs:
-                        break
-                    records.extend(recs)
-                    fetched += len(recs)
+                query = {
+                    'device_num': device_num,
+                    'update_time': {'$gte': start_dt, '$lte': end_dt}
+                }
 
-                    # 提前退出：如果当前批次的最新时间已早于查询窗口，说明已覆盖到起点
-                    latest_time = None
-                    for rec in recs:
-                        ts = to_ms(rec.get('update_time', ''))
-                        if ts and (latest_time is None or ts > latest_time):
-                            latest_time = ts
-                    if latest_time and latest_time < start_ts:
-                        break
+                cursor = collection.find(
+                    query,
+                    sort=[('update_time', 1)],
+                    projection={
+                        'factor_code': 1,
+                        'factor_value': 1,
+                        'factor_unit': 1,
+                        'update_time': 1,
+                        'created_at': 1
+                    }
+                )
 
-                    if len(recs) < pagesize:
-                        break  # 没有更多数据
-                    if fetched >= max_records:
-                        break  # 达到安全上限
-                    page += 1
+                from collections import defaultdict
+                series_map = defaultdict(list)
+                unit_map = {}
 
-            # 若未命中包含“设备”的模型，回退到所有启用模型中继续查找
-            if not iot_models:
-                iot_models = db.session.query(DataModel).filter(
-                    DataModel.del_flag == 0,
-                    DataModel.status == 1,
-                ).all()
+                # 用于去重的字典：{code: {timestamp: {value, record_time}}}
+                dedup_map = defaultdict(dict)
 
-            # 过滤：设备编号+时间
-
-            filtered = []
-            for r in records:
-                dev_num = r.get('device_num') or r.get('deviceNum') or r.get('device_id')
-                if device_num and str(dev_num) != device_num:
-                    continue
-                ts = to_ms(r.get('update_time'))
-                if ts is None:
-                    continue
-                if start_ts <= ts <= end_ts:
-                    filtered.append(r)
-
-            # 指标分组
-            from collections import defaultdict
-            series_map = defaultdict(list)
-            unit_map = {}
-            
-
-            # 用于去重的字典：{code: {timestamp: {value, record_time}}}
-            dedup_map = defaultdict(dict)
-            
-            for r in filtered:
-                code = r.get('factor_code') or r.get('code') or ''
-                # 注意：不能用 "or" 读取数值，否则 0 会被当作假值丢弃
-                val = r.get('factor_value')
-                if val is None:
-                    val = r.get('value')
-                unit = r.get('factor_unit') or r.get('unit') or ''
-                ts = to_ms(r.get('update_time'))
-                try:
-                    val_f = float(str(val))
-                except Exception:
-                    continue
-                
-                # 获取记录的创建时间或更新时间作为排序依据
-                record_time = r.get('created_at') or r.get('update_time') or r.get('create_time')
-                if isinstance(record_time, str):
+                for doc in cursor:
+                    code = doc.get('factor_code') or ''
+                    if not code:
+                        continue
+                    val = doc.get('factor_value')
+                    unit = doc.get('factor_unit') or ''
+                    update_time = doc.get('update_time')
+                    if not update_time:
+                        continue
+                    # Mongo 中存储为 datetime，无需再处理 ISO 字符串
+                    ts = int(update_time.timestamp() * 1000)
                     try:
-                        if 'T' in record_time:
-                            record_timestamp = datetime.fromisoformat(record_time.replace('Z', '+00:00')).timestamp()
-                        else:
-                            record_timestamp = datetime.strptime(record_time, '%Y-%m-%d %H:%M:%S').timestamp()
-                    except:
-                        record_timestamp = ts / 1000  # 使用时间戳作为备选
-                else:
-                    record_timestamp = ts / 1000
-                
-                # 去重逻辑：同一时间戳只保留最新的记录（基于记录时间）
-                # 如果记录时间相同，则保留数值较大的那个（通常表示更新的数据）
-                if ts not in dedup_map[code]:
-                    dedup_map[code][ts] = {'value': val_f, 'record_time': record_timestamp}
-                elif record_timestamp > dedup_map[code][ts]['record_time']:
-                    dedup_map[code][ts] = {'value': val_f, 'record_time': record_timestamp}
-                elif record_timestamp == dedup_map[code][ts]['record_time'] and val_f > dedup_map[code][ts]['value']:
-                    # 如果记录时间相同，保留数值较大的
-                    dedup_map[code][ts] = {'value': val_f, 'record_time': record_timestamp}
-                unit_map[code] = unit
+                        val_f = float(str(val))
+                    except Exception:
+                        continue
 
-            # 将去重后的数据转换为列表格式
-            for code, time_values in dedup_map.items():
-                for ts, data in time_values.items():
-                    series_map[code].append({'t': ts, 'v': data['value']})
+                    record_time = doc.get('created_at') or update_time
+                    if isinstance(record_time, _dt):
+                        record_timestamp = record_time.timestamp()
+                    else:
+                        record_timestamp = ts / 1000
 
-            # 每个序列按时间排序
-            for code in series_map:
-                series_map[code] = sorted(series_map[code], key=lambda x: x['t'])
+                    if ts not in dedup_map[code]:
+                        dedup_map[code][ts] = {'value': val_f, 'record_time': record_timestamp}
+                    elif record_timestamp > dedup_map[code][ts]['record_time']:
+                        dedup_map[code][ts] = {'value': val_f, 'record_time': record_timestamp}
+                    elif record_timestamp == dedup_map[code][ts]['record_time'] and val_f > dedup_map[code][ts]['value']:
+                        dedup_map[code][ts] = {'value': val_f, 'record_time': record_timestamp}
+
+                    unit_map[code] = unit
+
+                # 将去重后的数据转换为列表格式
+                for code, time_values in dedup_map.items():
+                    for ts, data in time_values.items():
+                        series_map[code].append({'t': ts, 'v': data['value']})
+
+                # 每个序列按时间排序
+                for code in series_map:
+                    series_map[code] = sorted(series_map[code], key=lambda x: x['t'])
+            finally:
+                if client:
+                    client.close()
             
             # 判断是否为电表设备
             is_power_device = '电表' in device_name if device_name else False

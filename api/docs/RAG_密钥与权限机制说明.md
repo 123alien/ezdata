@@ -5,7 +5,6 @@
 RAG系统采用了**JWT (JSON Web Token)** 作为身份验证和授权机制，通过SSO Token实现与TrustRAG服务的通信。
 
 ## 二、密钥系统
-应该
 ### 2.1 密钥配置
 
 #### ezdata后端密钥
